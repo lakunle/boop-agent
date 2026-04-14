@@ -38,19 +38,36 @@ function runCapture(cmd, args) {
   });
 }
 
-function parsePhone(output) {
+function parsePhones(output) {
   const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
+  const seen = new Set();
+  const numbers = [];
+
   try {
     const json = JSON.parse(clean);
-    const n = json.phone_number ?? json.phoneNumber ?? json.number;
-    if (n) return String(n);
+    const lines = Array.isArray(json) ? json : (json.lines ?? json.numbers ?? []);
+    for (const entry of lines) {
+      const n = entry?.phone_number ?? entry?.phoneNumber ?? entry?.number ?? entry;
+      if (typeof n === "string" && /^\+?\d{10,15}$/.test(n.replace(/[^\d+]/g, ""))) {
+        const norm = n.startsWith("+") ? n : `+${n}`;
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          numbers.push(norm);
+        }
+      }
+    }
+    if (numbers.length) return numbers;
   } catch {
     /* not JSON */
   }
-  const m = clean.match(
-    /(?:Phone[- ]?Number|From[- ]?Number|number)[:\s]+"?(\+?\d{10,15})/i,
-  );
-  return m ? m[1] : null;
+
+  for (const m of clean.matchAll(/\+\d{10,15}/g)) {
+    if (!seen.has(m[0])) {
+      seen.add(m[0]);
+      numbers.push(m[0]);
+    }
+  }
+  return numbers;
 }
 
 async function main() {
@@ -58,11 +75,11 @@ async function main() {
   const cmd = useGlobal ? "sendblue" : "npx";
   const leading = useGlobal ? [] : ["-y", "@sendblue/cli"];
 
-  console.log(`Running \`${cmd} ${[...leading, "show-keys"].join(" ")}\`…\n`);
+  console.log(`Running \`${cmd} ${[...leading, "lines"].join(" ")}\`…\n`);
 
   let output;
   try {
-    output = await runCapture(cmd, [...leading, "show-keys"]);
+    output = await runCapture(cmd, [...leading, "lines"]);
   } catch (err) {
     console.error(`\n✗ Command failed: ${err.message}`);
     console.error(
@@ -71,16 +88,21 @@ async function main() {
     process.exit(1);
   }
 
-  const phone = parsePhone(output);
-  if (!phone) {
-    console.error(`\n✗ Couldn't find a phone number in the CLI output above.`);
+  const phones = parsePhones(output);
+  if (phones.length === 0) {
+    console.error(`\n✗ Couldn't find any phone numbers in the \`lines\` output above.`);
     console.error(
-      `  If you have it handy, set it manually:  SENDBLUE_FROM_NUMBER=+14695551234 in .env.local`,
+      `  Fall back to:  grab the number from your Sendblue dashboard → Numbers,\n               then set SENDBLUE_FROM_NUMBER=+1… in .env.local manually.`,
     );
     process.exit(1);
   }
 
-  const normalized = phone.startsWith("+") ? phone : `+${phone}`;
+  let phone = phones[0];
+  if (phones.length > 1) {
+    console.log(`\nFound ${phones.length} numbers on your account:`);
+    for (const [i, p] of phones.entries()) console.log(`  [${i}] ${p}`);
+    console.log(`Using [0] ${phone}. Edit .env.local if you want a different one.`);
+  }
 
   if (!existsSync(envPath)) {
     console.error(`\n✗ .env.local not found. Run \`npm run setup\` first.`);
@@ -91,14 +113,14 @@ async function main() {
   if (/^SENDBLUE_FROM_NUMBER=.*$/m.test(content)) {
     content = content.replace(
       /^SENDBLUE_FROM_NUMBER=.*$/m,
-      `SENDBLUE_FROM_NUMBER=${normalized}`,
+      `SENDBLUE_FROM_NUMBER=${phone}`,
     );
   } else {
-    content = content.trimEnd() + `\nSENDBLUE_FROM_NUMBER=${normalized}\n`;
+    content = content.trimEnd() + `\nSENDBLUE_FROM_NUMBER=${phone}\n`;
   }
   writeFileSync(envPath, content);
 
-  console.log(`\n✓ Updated .env.local → SENDBLUE_FROM_NUMBER=${normalized}`);
+  console.log(`\n✓ Updated .env.local → SENDBLUE_FROM_NUMBER=${phone}`);
   console.log(`  Restart \`npm run dev\` to pick up the change.`);
 }
 
