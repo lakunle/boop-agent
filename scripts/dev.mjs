@@ -217,15 +217,41 @@ if (useNgrok && ngrokInstalled) {
 
 // Wait for all the core services to be ready before printing the banner,
 // so the URL isn't dangled in front of the user while Convex is still booting.
+async function autoRegisterWebhook(publicUrl) {
+  if (envVars.SENDBLUE_AUTO_WEBHOOK === "false") return;
+  const webhookUrl = `${publicUrl}/sendblue/webhook`;
+  const prefix = `${C.ngrok}webhook${C.reset} │ `;
+  const child = spawn("node", ["scripts/sendblue-webhook.mjs", webhookUrl], {
+    cwd: root,
+    env: { ...process.env },
+  });
+  child.stdout.on("data", (d) => {
+    for (const line of d.toString().split("\n")) {
+      if (line.trim()) process.stdout.write(prefix + line + "\n");
+    }
+  });
+  child.stderr.on("data", (d) => {
+    for (const line of d.toString().split("\n")) {
+      if (line.trim()) process.stdout.write(prefix + line + "\n");
+    }
+  });
+  await new Promise((r) => child.on("exit", r));
+}
+
 Promise.all([
   serverChild.ready,
   convexChild.ready,
   debugChild.ready,
   ngrokUrlReady,
 ])
-  .then(([, , , ngrokUrl]) => {
+  .then(async ([, , , ngrokUrl]) => {
     if (useNgrok && ngrokInstalled) {
       if (ngrokUrl) {
+        // Only auto-register for ephemeral ngrok URLs. Reserved domains and
+        // static URLs are already fixed in the Sendblue dashboard.
+        if (!ngrokDomain) {
+          await autoRegisterWebhook(ngrokUrl);
+        }
         showBanner(ngrokUrl, Boolean(ngrokDomain));
       } else {
         console.log(
