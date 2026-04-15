@@ -21,9 +21,12 @@ Return STRICT JSON only:
   {"type":"prune","memoryId":"mem_...","reason":"..."}
 ]}
 
-Rules:
-- Be conservative. If two memories are merely similar but reflect different facts, leave them alone.
+Hard rules:
+- NEVER propose a merge with an empty "absorb" list. If there's nothing to
+  absorb, there's nothing to merge — skip it entirely.
+- "absorb" MUST NOT contain the same id as "keep".
 - "rewriteContent" must be a single clear sentence combining both sources.
+- Be conservative. Similar but distinct facts stay separate.
 - If no changes needed, return {"proposals":[]}.
 - Respond with ONLY the JSON.`;
 

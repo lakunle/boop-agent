@@ -28,6 +28,23 @@ export const upsert = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+
+    // Archive any memories this one supersedes. Must run on BOTH the insert
+    // and update paths — consolidation merges typically update an existing
+    // "keep" memory while archiving the ones it absorbed.
+    if (args.supersedes?.length) {
+      for (const sid of args.supersedes) {
+        if (sid === args.memoryId) continue; // never archive self
+        const target = await ctx.db
+          .query("memoryRecords")
+          .withIndex("by_memory_id", (q) => q.eq("memoryId", sid))
+          .unique();
+        if (target && target.lifecycle === "active") {
+          await ctx.db.patch(target._id, { lifecycle: "archived" });
+        }
+      }
+    }
+
     const existing = await ctx.db
       .query("memoryRecords")
       .withIndex("by_memory_id", (q) => q.eq("memoryId", args.memoryId))
@@ -45,16 +62,6 @@ export const upsert = mutation({
         lastAccessedAt: now,
       });
       return existing._id;
-    }
-
-    if (args.supersedes?.length) {
-      for (const sid of args.supersedes) {
-        const target = await ctx.db
-          .query("memoryRecords")
-          .withIndex("by_memory_id", (q) => q.eq("memoryId", sid))
-          .unique();
-        if (target) await ctx.db.patch(target._id, { lifecycle: "archived" });
-      }
     }
 
     return await ctx.db.insert("memoryRecords", {
