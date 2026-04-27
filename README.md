@@ -27,7 +27,7 @@ An iMessage-based personal agent built on top of the [Claude Agent SDK](https://
 Built on:
 - [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) — the loop, tool use, sub-agents, MCP
 - [Composio](https://composio.dev/?utm_source=chris&utm_medium=youtube&utm_campaign=collab) — integrations layer. One API key = Gmail, Slack, GitHub, Linear, Notion, Stripe, Supabase, + ~1000 more with hosted OAuth
-- [Sendblue](https://sendblue.co?ref=chrisraroque) — iMessage in/out (free on their agent plan)
+- [Sendblue](https://sendblue.com/?utm_source=raroque) — iMessage in/out (free on their agent plan)
 - [Convex](https://convex.link/chrisraroque) — real-time database for memory, agents, drafts
 - Your [Claude Code](https://claude.com/code?ref=chrisraroque) subscription — no separate Anthropic API key required
 
@@ -116,7 +116,7 @@ You need accounts for these. Keep the tabs open — setup will ask for credentia
 | Service | Why | Free? | Discount code |
 |---|---|---|---|
 | [Claude Code](https://claude.com/code?ref=chrisraroque) | Powers the agent. Install it, sign in once, the SDK uses your session. | Subscription required | Working on getting one (if you work here, please reach out!) |
-| [Sendblue](https://sendblue.co?ref=chrisraroque) | iMessage bridge. Get a number, grab API keys. | Free on their agent plan | Working on getting one (in touch with them 👀) |
+| [Sendblue](https://sendblue.com/?utm_source=raroque) | iMessage bridge. Get a number, grab API keys. | Free on their agent plan | `RAROQUE20` — 20% off for 6 months (helpful if you plan to commercialize) |
 | [Convex](https://convex.link/chrisraroque) | Database + realtime. | Free tier is plenty | Working on getting one (in touch with them 👀) |
 | [Composio](https://composio.dev/?utm_source=chris&utm_medium=youtube&utm_campaign=collab) | Integrations — one API key unlocks ~1000 toolkits. Optional if you just want chat + memory + automations without third-party access. | Free tier covers personal use | `CHRISXCOMPOSIO` — 1 month free on starter plan |
 | [ngrok](https://ngrok.com?ref=chrisraroque) or similar | Expose your local port so Sendblue can reach it. | Free tier works | Working on getting one (if you work here, please reach out!) |
