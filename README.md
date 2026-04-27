@@ -6,7 +6,7 @@
 
 An iMessage-based personal agent built on top of the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview).
 
-📺 **Watch the walkthrough:** [YouTube — How I built Boop](https://www.youtube.com/watch?v=3Rc4MlMJMNU)
+📺 **Watch the walkthrough:** [YouTube — How I built Boop](https://youtu.be/ZpmKjDDbqHs)
 
 > **This is a starting point, not a finished product.**
 > It's the architecture I built for my own personal agent, opened up as a template so you can take it, text-enable your own Claude, and extend it however you want. Integrations are plugged in via [Composio](https://composio.dev/?utm_source=chris&utm_medium=youtube&utm_campaign=collab) — drop in an API key and connect Gmail, Slack, GitHub, Linear, Notion, and ~1000 others straight from the debug dashboard.
@@ -21,9 +21,9 @@ An iMessage-based personal agent built on top of the [Claude Agent SDK](https://
 Built on:
 - [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) — the loop, tool use, sub-agents, MCP
 - [Composio](https://composio.dev/?utm_source=chris&utm_medium=youtube&utm_campaign=collab) — integrations layer. One API key = Gmail, Slack, GitHub, Linear, Notion, Stripe, Supabase, + ~1000 more with hosted OAuth
-- [Sendblue](https://sendblue.co) — iMessage in/out (free on their agent plan)
-- [Convex](https://convex.dev) — real-time database for memory, agents, drafts
-- Your [Claude Code](https://claude.com/code) subscription — no separate Anthropic API key required
+- [Sendblue](https://sendblue.co?ref=chrisraroque) — iMessage in/out (free on their agent plan)
+- [Convex](https://convex.link/chrisraroque) — real-time database for memory, agents, drafts
+- Your [Claude Code](https://claude.com/code?ref=chrisraroque) subscription — no separate Anthropic API key required
 
 ---
 
@@ -47,6 +47,14 @@ Built on:
 Boop is meant to be a proactive agent — one that nudges you over iMessage with reminders, drafts, and little follow-ups. A small "boop" whenever it has something for you.
 
 And it's named after my dog, Luna, who gives plenty of them.
+
+---
+
+## A note on the native iOS app
+
+I'm working on open-sourcing the native iOS app I originally built for this. The rewrite is taking much longer to get right than I'd hoped, but it will happen. I don't personally use it anymore — but enough people have asked, and I want to make it happen.
+
+If you want to see what it looked like before I transitioned to an iMessage-based agent, here's [the walkthrough on YouTube](https://www.youtube.com/watch?v=_h2EnRfxMQE).
 
 ---
 
@@ -77,11 +85,11 @@ You need accounts for these. Keep the tabs open — setup will ask for credentia
 
 | Service | Why | Free? | Discount code |
 |---|---|---|---|
-| [Claude Code](https://claude.com/code) | Powers the agent. Install it, sign in once, the SDK uses your session. | Subscription required | Working on getting one (if you work here, please reach out!) |
-| [Sendblue](https://sendblue.co) | iMessage bridge. Get a number, grab API keys. | Free on their agent plan | Working on getting one (in touch with them 👀) |
-| [Convex](https://convex.dev) | Database + realtime. | Free tier is plenty | Working on getting one (in touch with them 👀) |
+| [Claude Code](https://claude.com/code?ref=chrisraroque) | Powers the agent. Install it, sign in once, the SDK uses your session. | Subscription required | Working on getting one (if you work here, please reach out!) |
+| [Sendblue](https://sendblue.co?ref=chrisraroque) | iMessage bridge. Get a number, grab API keys. | Free on their agent plan | Working on getting one (in touch with them 👀) |
+| [Convex](https://convex.link/chrisraroque) | Database + realtime. | Free tier is plenty | Working on getting one (in touch with them 👀) |
 | [Composio](https://composio.dev/?utm_source=chris&utm_medium=youtube&utm_campaign=collab) | Integrations — one API key unlocks ~1000 toolkits. Optional if you just want chat + memory + automations without third-party access. | Free tier covers personal use | `CHRISXCOMPOSIO` — 1 month free on starter plan |
-| [ngrok](https://ngrok.com) or similar | Expose your local port so Sendblue can reach it. | Free tier works | Working on getting one (if you work here, please reach out!) |
+| [ngrok](https://ngrok.com?ref=chrisraroque) or similar | Expose your local port so Sendblue can reach it. | Free tier works | Working on getting one (if you work here, please reach out!) |
 
 Integrations are **opt-in**. First-run without a Composio key gives you a plain chat agent with memory + automations. Drop in `COMPOSIO_API_KEY` and connect toolkits from the Debug UI whenever you want more.
 
