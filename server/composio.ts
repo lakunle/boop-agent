@@ -454,44 +454,52 @@ export class ComposioNeedsAuthConfigError extends Error {
   }
 }
 
-function isNeedsAuthConfigError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const maybe = err as { status?: number; message?: string; error?: { error?: { message?: string } } };
-  const message =
-    maybe.error?.error?.message ??
-    maybe.message ??
-    "";
-  return maybe.status === 400 && /require auth configs? but none exist/i.test(message);
-}
-
 export async function authorizeToolkit(
   slug: string,
   opts?: { callbackUrl?: string; alias?: string },
 ): Promise<{ redirectUrl: string | null; connectionId: string }> {
   const composio = getComposio();
   if (!composio) throw new Error("COMPOSIO_API_KEY not set");
-  // If there's already an active connection for this slug, we're adding another account —
-  // tell Composio to allow multiple.
+
+  // 1. Find or create an auth config for the toolkit. session.authorize doesn't
+  //    auto-discover or auto-create — we have to pass an authConfigId explicitly
+  //    to connectedAccounts.initiate. That's why a manually-added BYO config in
+  //    the dashboard would still trip "require auth configs but none exist" on
+  //    the previous session.authorize-based code path.
+  let authConfigId: string;
+  const existingConfig = (await composio.authConfigs.list({ toolkit: slug })).items[0];
+  if (existingConfig) {
+    authConfigId = existingConfig.id;
+  } else {
+    try {
+      const created = await composio.authConfigs.create(slug, {
+        type: "use_composio_managed_auth",
+        name: `${displayNameFor(slug)} Auth Config`,
+      });
+      authConfigId = created.id;
+    } catch (err) {
+      // 400 here means Composio doesn't host a managed OAuth app for this toolkit —
+      // user has to register their own at the toolkit's dev portal and add it via
+      // the Composio Dashboard (Toolkits → search → Add to project).
+      const status = (err as { status?: number })?.status;
+      if (status === 400) {
+        throw new ComposioNeedsAuthConfigError(slug, String(err));
+      }
+      throw err;
+    }
+  }
+
+  // 2. Initiate the connection. allowMultiple if there's already an active connection
+  //    so we add another account instead of replacing.
   const existing = (await listConnectedToolkits()).filter(
     (c) => c.slug === slug && c.status === "ACTIVE",
   );
-  try {
-    const session = await composio.create(boopUserId(), {
-      toolkits: [slug],
-      manageConnections: false,
-      ...(existing.length > 0 ? { multiAccount: { enable: true } } : {}),
-    });
-    const conn = await session.authorize(slug, {
-      ...(opts?.callbackUrl ? { callbackUrl: opts.callbackUrl } : {}),
-      ...(opts?.alias ? { alias: opts.alias } : {}),
-    });
-    return { redirectUrl: conn.redirectUrl ?? null, connectionId: conn.id };
-  } catch (err) {
-    if (isNeedsAuthConfigError(err)) {
-      throw new ComposioNeedsAuthConfigError(slug, String(err));
-    }
-    throw err;
-  }
+  const conn = await composio.connectedAccounts.initiate(boopUserId(), authConfigId, {
+    ...(existing.length > 0 ? { allowMultiple: true } : {}),
+    ...(opts?.callbackUrl ? { callbackUrl: opts.callbackUrl } : {}),
+    ...(opts?.alias ? { alias: opts.alias } : {}),
+  });
+  return { redirectUrl: conn.redirectUrl ?? null, connectionId: conn.id };
 }
 
 export async function disconnectToolkit(connectionId: string): Promise<void> {
@@ -516,9 +524,15 @@ export function buildComposioIntegrationModule(slug: string): IntegrationModule 
       const activeCount = (await listConnectedToolkits()).filter(
         (c) => c.slug === slug && c.status === "ACTIVE",
       ).length;
+      // Look up the auth config explicitly. Without this, composio.create() tries
+      // to auto-create one and 400s for BYO toolkits (Twitter etc.) that don't
+      // have a managed OAuth app available — error message even names the fix:
+      // "Please specify them in auth_configs."
+      const authConfig = (await composio.authConfigs.list({ toolkit: slug })).items[0];
       const session = await composio.create(boopUserId(), {
         toolkits: [slug],
         manageConnections: false,
+        ...(authConfig ? { authConfigs: { [slug]: authConfig.id } } : {}),
         ...(activeCount >= 2
           ? { multiAccount: { enable: true, requireExplicitSelection: true } }
           : {}),
