@@ -13,6 +13,8 @@ import {
   renameConnection,
 } from "./composio.js";
 import { refreshIntegrations } from "./integrations/registry.js";
+import { getStoredWebhookSecret } from "./composio-webhook.js";
+import { handleEmailEvent } from "./proactive-email.js";
 
 export function createComposioRouter(): express.Router {
   const router = express.Router();
@@ -168,6 +170,55 @@ export function createComposioRouter(): express.Router {
       res.status(500).json({ error: String(err) });
     }
   });
+
+  // Composio webhook receiver. The raw-body parser is mounted in
+  // server/index.ts BEFORE express.json (otherwise the JSON parser would
+  // consume the stream first and we'd lose the bytes needed for HMAC
+  // verification). Respond 200 fast — Composio only retries on non-2xx, so
+  // post-ack failures in the async dispatch don't trigger redeliveries.
+  router.post(
+    "/webhook",
+    async (req, res) => {
+      const composio = getComposio();
+      if (!composio) {
+        res.status(503).json({ error: "composio disabled" });
+        return;
+      }
+      const id = String(req.header("webhook-id") ?? "");
+      const signature = String(req.header("webhook-signature") ?? "");
+      const timestamp = String(req.header("webhook-timestamp") ?? "");
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf-8") : "";
+      if (!id || !signature || !timestamp || !rawBody) {
+        res.status(400).json({ error: "missing webhook headers/body" });
+        return;
+      }
+      const secret = await getStoredWebhookSecret();
+      if (!secret) {
+        console.warn("[composio-webhook] no stored secret; cannot verify — rejecting");
+        res.status(401).end();
+        return;
+      }
+      let verified;
+      try {
+        verified = await composio.triggers.verifyWebhook({
+          id,
+          signature,
+          timestamp,
+          payload: rawBody,
+          secret,
+        });
+      } catch (err) {
+        console.warn("[composio-webhook] signature verification failed", err);
+        res.status(401).end();
+        return;
+      }
+      // Ack immediately; dispatch is fire-and-forget.
+      res.json({ ok: true });
+      Promise.resolve()
+        .then(() => handleEmailEvent(verified.payload))
+        .catch((err) => console.error("[composio-webhook] dispatch failed", err));
+    },
+  );
 
   return router;
 }

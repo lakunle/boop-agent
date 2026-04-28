@@ -8,6 +8,22 @@ Format:
 
 ---
 
+## Unreleased — Proactive email surfacing
+
+- Added: webhook-driven Gmail watcher. On boot (or on every `npm run dev` ngrok URL change), Boop registers a project-level webhook subscription against Composio's `/api/v3.1/webhook_subscriptions` endpoint and a `GMAIL_NEW_GMAIL_MESSAGE` trigger instance per active Gmail connection. When Composio fires `composio.trigger.message`, the new `POST /composio/webhook` route verifies the HMAC signature, runs a Haiku classifier, and on a positive decision routes the summary into the interaction agent as a synthetic `role="system"` message — the IA decides the iMessage tone and any follow-up.
+- Added: `server/composio-webhook.ts` — REST helpers (`GET/POST/PATCH/DELETE /api/v3.1/webhook_subscriptions`) plus `ensureWebhookSubscription(publicUrl)` that POSTs once or PATCHes the URL on subsequent runs, persisting the returned signing secret to the existing `settings` table.
+- Added: `server/proactive-email.ts` — `handleEmailEvent`, `classifyEmailImportance` (hardcoded rubric + recall of `preference`-segment memories so the user can teach it via `write_memory`), `dispatchProactiveNotice`, and `ensureProactiveWatcher` for the boot setup. Per-connection warmup safeguard skips classification on the first event after a process boot.
+- Added: `scripts/composio-webhook.ts` (one-shot tsx) + auto-call from `scripts/dev.mjs` on every ngrok URL change. Set `COMPOSIO_AUTO_WEBHOOK=false` to opt out.
+- Added: `BOOP_USER_PHONE` env var in `.env.example` — required to dispatch proactive notices.
+- Added: `kind?: "user" | "proactive"` parameter on `handleUserMessage` (server/interaction-agent.ts). Proactive messages persist with `role="system"` so they don't pollute the user-message history.
+- Added: `proactive` source on `usageRecords` so the classifier's per-event cost rolls up cleanly in `usageRecords:summary`.
+- Added: `ensureTrigger(triggerSlug, connectedAccountId)` helper in `server/composio.ts`.
+- Added: classifier rubric tightening — drops cold outreach disguised as personal (sales pitches with first-name greetings on prospecting domains), user's-own-SaaS form submissions (UserJot/Canny/Webflow Forms/Formspark/Tally), user-initiated auth flows (magic-link sign-ins), expired deadlines, and low-severity automated scans. Summary writing rule now requires second-person framing so notices don't refer to the user in the third person.
+- Added: user-identity injection. Classifier prompt now includes the user's connected Gmail addresses so it can reason about self-sends/forwards across accounts. Cached for 30 minutes per process.
+- Added: deterministic self-send pre-filter in `handleEmailEvent`. If `sender` matches any user identity, the event drops before reaching the LLM — cheaper, can't be argued out of by a clever email body.
+- Added: `proactive_enabled` flag in the `settings` table (default true) plus a new **Settings** tab in the Debug UI with a toggle. Flipping the toggle silences proactive notices within ~30s without disconnecting Gmail. Read in `handleEmailEvent` via `isProactiveEnabled()` (cached, 30s TTL).
+- Fixed: proactive dispatch was running the IA but never sending the IA's reply over iMessage — `handleUserMessage` only sends from inside `send_ack`; the final reply is the caller's responsibility (matches the user-driven path in `server/sendblue.ts`). `dispatchProactiveNotice` now sends and persists the reply, with a fallback to the raw classifier summary if the IA stays silent.
+
 ## Unreleased — Self-inspection & runtime model switching
 
 - Added: `server/self-tools.ts` — interaction-agent MCP server (`boop-self`) exposing `get_config`, `list_integrations`, `search_composio_catalog`, `inspect_toolkit`, and `set_model`. Lets the user ask Boop about its own configuration from iMessage without spawning a sub-agent.

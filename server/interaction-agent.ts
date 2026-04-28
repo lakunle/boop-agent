@@ -115,6 +115,10 @@ interface HandleOpts {
   content: string;
   turnTag?: string;
   onThinking?: (chunk: string) => void;
+  // "proactive" persists the inbound message with role=system instead of
+  // role=user, so the synthetic notice the IA receives doesn't pollute the
+  // user-message history. Defaults to "user".
+  kind?: "user" | "proactive";
 }
 
 function randomId(prefix: string): string {
@@ -125,13 +129,17 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   const turnId = randomId("turn");
   const integrations = availableIntegrations();
 
+  const inboundRole = opts.kind === "proactive" ? "system" : "user";
   await convex.mutation(api.messages.send, {
     conversationId: opts.conversationId,
-    role: "user",
+    role: inboundRole,
     content: opts.content,
     turnId,
   });
-  broadcast("user_message", { conversationId: opts.conversationId, content: opts.content });
+  broadcast(opts.kind === "proactive" ? "proactive_notice" : "user_message", {
+    conversationId: opts.conversationId,
+    content: opts.content,
+  });
 
   const memoryServer = createMemoryMcp(opts.conversationId);
   const automationServer = createAutomationMcp(opts.conversationId);

@@ -97,6 +97,7 @@ export default defineSchema({
       v.literal("consolidation-proposer"),
       v.literal("consolidation-adversary"),
       v.literal("consolidation-judge"),
+      v.literal("proactive"),
     ),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
