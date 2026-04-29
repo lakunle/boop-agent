@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api.js";
+import { CookieImportSection } from "./CookieImportSection.js";
 
 interface BrowserStatus {
   installed: boolean;
@@ -291,6 +292,8 @@ export function BrowserSection({ isDark }: { isDark: boolean }) {
                 </div>
               )}
             </div>
+
+            <CookieImportSection isDark={isDark} />
           </div>
         </div>
       </div>

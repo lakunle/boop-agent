@@ -233,6 +233,20 @@ export default defineSchema({
     askedAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
+  // Cookie imports from the user's daily Chrome profile into boop's stealth
+  // Chrome. One row per (service, profile) — re-importing updates the same
+  // row. Identity is the Google email / handle we read off the source
+  // profile so the UI can show "Active as user@example.com".
+  cookieImports: defineTable({
+    service: v.string(),
+    sourceProfile: v.string(),
+    identity: v.optional(v.string()),
+    cookieCount: v.number(),
+    lastImportedAt: v.number(),
+    lastVerifiedAt: v.optional(v.number()),
+    verifiedOk: v.optional(v.boolean()),
+  }).index("by_service", ["service"]),
+
   automationRuns: defineTable({
     runId: v.string(),
     automationId: v.string(),

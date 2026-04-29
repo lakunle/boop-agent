@@ -2,6 +2,7 @@ import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { execa } from "execa";
 import { browserBaseArgs, CHROME_PATH, getBrowserEnv } from "./config.js";
+import { ensureStealthChrome } from "./stealth-launcher.js";
 
 if (CHROME_PATH) {
   console.log(`[browser] using real Chrome at ${CHROME_PATH}`);
@@ -19,6 +20,7 @@ interface Result {
 
 async function ab(args: string[]): Promise<Result> {
   try {
+    await ensureStealthChrome();
     const r = await execa("agent-browser", [...browserBaseArgs(), ...args], {
       preferLocal: true,
       timeout: TIMEOUT_MS,

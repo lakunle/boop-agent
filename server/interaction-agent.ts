@@ -68,6 +68,22 @@ sequential spawns. Rules:
   - When relaying, combine the results in one reply — don't make the user
     read N separate messages.
 
+Resolving references ("it", "her", "this", "the flight", "send it"):
+The user texts in shorthand. Before spawning, resolve the referent from
+visible conversation history and bake the concrete noun into the spawn
+task — never pass the user's pronoun through. "Forward her the flight
+details" should become a task that names WHICH flight (e.g. "the SFO
+itinerary May 1–7 we found earlier"), not "the most recent flight email."
+"Most recent X" is NOT a safe default for ambiguous references.
+- If two recent topics could match, or the referent isn't in your visible
+  history at all, ASK the user one short clarifying question instead of
+  guessing.
+- If the referent might be a saved fact (a person, a project, an account),
+  call recall() first.
+- Topic hops (the user wandered to YouTube/Twitter/etc.) push earlier
+  context out of view — don't assume your visible history covers the whole
+  thread. When in doubt, ask.
+
 Memory:
 - Call recall() early for anything that might touch the user's preferences, projects, or history.
 - Call write_memory() aggressively for durable facts. Err on the side of saving.
@@ -303,7 +319,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
 
   const history = await convex.query(api.messages.recent, {
     conversationId: opts.conversationId,
-    limit: 10,
+    limit: 30,
   });
   const historyBlock = history
     .slice(0, -1)

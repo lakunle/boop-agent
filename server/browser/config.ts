@@ -39,10 +39,20 @@ function detectRealChrome(): string | null {
 
 export const CHROME_PATH = detectRealChrome();
 
+// We launch Chrome ourselves (see server/browser/stealth-launcher.ts) and
+// patch navigator.webdriver via CDP before any page loads — that's the
+// signal Google checks. `--disable-blink-features=AutomationControlled`
+// alone was patched out in Chrome 122+; doing nothing about webdriver
+// means Google's "browser may not be secure" wall fires on every sign-in.
+//
+// `--cdp <port>` is the per-command flag that points agent-browser at our
+// already-running Chrome. Without it, the daemon launches its own bundled
+// Chrome for Testing in a temp profile and ignores ours entirely (which
+// silently breaks the patch — your patches go to the wrong browser).
+export const STEALTH_CDP_PORT = 9222;
+
 export function browserBaseArgs(): string[] {
-  const args = ["--profile", PROFILE_DIR, "--session", SESSION];
-  if (CHROME_PATH) args.push("--executable-path", CHROME_PATH);
-  return args;
+  return ["--session", SESSION, "--cdp", String(STEALTH_CDP_PORT)];
 }
 
 // agent-browser defaults to --headless=new, which puts "HeadlessChrome" in the

@@ -14,6 +14,7 @@ import { startConsolidationLoop } from "./consolidation.js";
 import { cancelAgent, retryAgent } from "./execution-agent.js";
 import { createComposioRouter } from "./composio-routes.js";
 import { createBrowserRouter } from "./browser-routes.js";
+import { stopStealthChrome } from "./browser/stealth-launcher.js";
 import { ensureProactiveWatcher } from "./proactive-email.js";
 
 async function main() {
@@ -109,6 +110,16 @@ async function main() {
     console.log(`  sendblue    POST http://localhost:${port}/sendblue/webhook`);
     console.log(`  websocket   WS   ws://localhost:${port}/ws`);
   });
+
+  // Make sure the Chrome we own dies when the server does. tsx watch sends
+  // SIGTERM on file changes; without this Chrome leaks across reloads and
+  // the next stealth-bootstrap fights its own zombie for the profile lock.
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+    process.on(sig, () => {
+      stopStealthChrome();
+      process.exit(0);
+    });
+  }
 }
 
 main().catch((err) => {
