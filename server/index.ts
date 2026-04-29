@@ -13,6 +13,7 @@ import { startHeartbeatLoop } from "./heartbeat.js";
 import { startConsolidationLoop } from "./consolidation.js";
 import { cancelAgent, retryAgent } from "./execution-agent.js";
 import { createComposioRouter } from "./composio-routes.js";
+import { createBrowserRouter } from "./browser-routes.js";
 import { ensureProactiveWatcher } from "./proactive-email.js";
 
 async function main() {
@@ -48,6 +49,7 @@ async function main() {
 
   app.use("/sendblue", createSendblueRouter());
   app.use("/composio", createComposioRouter());
+  app.use("/browser", createBrowserRouter());
 
   app.post("/agents/:id/cancel", (req, res) => {
     const ok = cancelAgent(req.params.id);

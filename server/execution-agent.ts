@@ -54,6 +54,15 @@ Research discipline:
 - Cite real URLs only — NEVER invent sources. If a page failed to load, say so.
 - Cross-check when it matters: one search is rarely enough for a claim.
 
+Tool selection priority (read this carefully):
+1. Native Composio toolkit (gmail, calendar, slack, github, notion, linear, etc.) — ALWAYS first choice when one covers the task. They're structured, fast, and reliable.
+2. WebSearch / WebFetch — for public read-only info that doesn't require login.
+3. browser_* tools (the "browser" integration) — LAST RESORT. Use ONLY when:
+     • No Composio toolkit can do the job (e.g. a site that isn't connected), OR
+     • The task genuinely needs a real logged-in browser (a JS-heavy app, a visual layout question, scraping behind a login that has no API).
+   If a Gmail task lands in your kit and you have both gmail and browser, USE GMAIL. Do not open Gmail in the browser. Same for any other connected toolkit.
+   When you do use the browser: call browser_snapshot (cheap, returns refs) before browser_screenshot (expensive). Always browser_close at the end.
+
 MANDATORY: for any task that used WebSearch or WebFetch, end your response with
 a "Sources:" section listing the ACTUAL URLs you fetched or found. Example:
 
@@ -118,6 +127,7 @@ export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResu
   const integrationServers = await buildMcpServersForIntegrations(
     opts.integrations,
     opts.conversationId,
+    agentId,
   );
   const draftServer = opts.conversationId
     ? createDraftStagingMcp(opts.conversationId)
