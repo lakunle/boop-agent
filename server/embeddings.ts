@@ -72,7 +72,7 @@ async function embedOpenAI(text: string): Promise<number[]> {
 async function getLocalExtractor(): Promise<FeatureExtractionPipeline> {
   if (extractor) return extractor;
   if (loading) return loading;
-  loading = (async () => {
+  const attempt = (async () => {
     const { pipeline } = await import("@huggingface/transformers");
     console.log(`[embeddings] loading local model ${LOCAL_MODEL} (~440MB on first run)…`);
     const start = Date.now();
@@ -83,6 +83,15 @@ async function getLocalExtractor(): Promise<FeatureExtractionPipeline> {
     extractor = ext;
     return ext;
   })();
+  loading = attempt;
+  // If the load rejects (transient network failure during the 440MB
+  // download, etc.) we MUST clear `loading` so the next call re-attempts
+  // instead of replaying the cached rejection forever. Detach the cleanup
+  // from the returned promise via .catch(() => {}) so callers see the
+  // original rejection while the slot still resets.
+  attempt.catch(() => {
+    if (loading === attempt) loading = null;
+  });
   return loading;
 }
 
