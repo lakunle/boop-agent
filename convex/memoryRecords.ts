@@ -182,6 +182,68 @@ export const setLifecycle = mutation({
 
 const COUNTS_SCAN_LIMIT = 5000;
 
+export const embeddingStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db
+      .query("memoryRecords")
+      .withIndex("by_lifecycle", (q) => q.eq("lifecycle", "active"))
+      .order("desc")
+      .take(COUNTS_SCAN_LIMIT);
+    let withEmbedding = 0;
+    let withoutEmbedding = 0;
+    for (const m of all) {
+      if (m.embedding && m.embedding.length > 0) withEmbedding++;
+      else withoutEmbedding++;
+    }
+    return {
+      total: all.length,
+      withEmbedding,
+      withoutEmbedding,
+      truncated: all.length === COUNTS_SCAN_LIMIT,
+    };
+  },
+});
+
+// Returns memoryIds + content for active memories that don't have an
+// embedding yet, in order of importance (highest first). Paginated so the
+// re-embed loop doesn't load everything at once.
+export const listUnembedded = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+    const all = await ctx.db
+      .query("memoryRecords")
+      .withIndex("by_lifecycle", (q) => q.eq("lifecycle", "active"))
+      .order("desc")
+      .take(COUNTS_SCAN_LIMIT);
+    return all
+      .filter((m) => !m.embedding || m.embedding.length === 0)
+      .sort((a, b) => b.importance - a.importance)
+      .slice(0, limit)
+      .map((m) => ({ memoryId: m.memoryId, content: m.content }));
+  },
+});
+
+// Patch just the embedding on an existing memory. Avoids re-running upsert
+// (which would touch lastAccessedAt + run supersedes processing) just to
+// back-fill a vector.
+export const setEmbedding = mutation({
+  args: {
+    memoryId: v.string(),
+    embedding: v.array(v.float64()),
+  },
+  handler: async (ctx, args) => {
+    const mem = await ctx.db
+      .query("memoryRecords")
+      .withIndex("by_memory_id", (q) => q.eq("memoryId", args.memoryId))
+      .unique();
+    if (!mem) return null;
+    await ctx.db.patch(mem._id, { embedding: args.embedding });
+    return mem._id;
+  },
+});
+
 export const countsByTier = query({
   args: {},
   handler: async (ctx) => {

@@ -14,6 +14,8 @@ import { startConsolidationLoop } from "./consolidation.js";
 import { cancelAgent, retryAgent } from "./execution-agent.js";
 import { createComposioRouter } from "./composio-routes.js";
 import { ensureProactiveWatcher } from "./proactive-email.js";
+import { preloadLocalModel } from "./embeddings.js";
+import { createMemoryRouter } from "./memory-routes.js";
 
 async function main() {
   await loadIntegrations();
@@ -21,6 +23,10 @@ async function main() {
   startAutomationLoop();
   startHeartbeatLoop();
   startConsolidationLoop();
+  // No-op when a paid embedding key is set; otherwise downloads/loads the
+  // local BGE-large model in the background so the first user-facing
+  // recall() doesn't pay the model-load cost.
+  preloadLocalModel();
 
   // If a stable public URL is configured, register the Composio webhook +
   // Gmail trigger now. For ngrok-based dev, scripts/dev.mjs drives the same
@@ -48,6 +54,7 @@ async function main() {
 
   app.use("/sendblue", createSendblueRouter());
   app.use("/composio", createComposioRouter());
+  app.use("/memory", createMemoryRouter());
 
   app.post("/agents/:id/cancel", (req, res) => {
     const ok = cancelAgent(req.params.id);
