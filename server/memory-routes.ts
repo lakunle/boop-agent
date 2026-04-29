@@ -11,16 +11,36 @@ let runningReembed: Promise<{ embedded: number; failed: number }> | null = null;
 async function runReembed(): Promise<{ embedded: number; failed: number }> {
   let embedded = 0;
   let failed = 0;
-  // Loop in pages — Convex queries cap at 5K rows but pagination keeps
-  // memory low and lets the UI watch progress in real time.
-  for (let page = 0; page < 100; page++) {
-    const batch = await convex.query(api.memoryRecords.listUnembedded, { limit: 25 });
-    if (batch.length === 0) break;
-    for (const row of batch) {
+  // Track every memoryId we've attempted in this run, so a row that fails
+  // to embed (e.g., transient null from the provider) doesn't keep
+  // reappearing at the top of subsequent page queries and burn through API
+  // quota. We only reach a row at most once per /memory/reembed POST.
+  const attempted = new Set<string>();
+  let cursor: string | null = null;
+  let isDone = false;
+  while (!isDone) {
+    const result: {
+      page: Array<{ memoryId: string; content: string }>;
+      isDone: boolean;
+      continueCursor: string;
+    } = await convex.query(api.memoryRecords.listUnembeddedPage, {
+      cursor,
+      pageSize: 50,
+    });
+    cursor = result.continueCursor;
+    isDone = result.isDone;
+    for (const row of result.page) {
+      if (attempted.has(row.memoryId)) continue;
+      attempted.add(row.memoryId);
       try {
         const vec = await embed(row.content);
         if (!vec) {
           failed++;
+          broadcast("memory.reembed.progress", {
+            embedded,
+            failed,
+            memoryId: row.memoryId,
+          });
           continue;
         }
         await convex.mutation(api.memoryRecords.setEmbedding, {
@@ -36,6 +56,11 @@ async function runReembed(): Promise<{ embedded: number; failed: number }> {
       } catch (err) {
         failed++;
         console.warn("[reembed] failed for", row.memoryId, err);
+        broadcast("memory.reembed.progress", {
+          embedded,
+          failed,
+          memoryId: row.memoryId,
+        });
       }
     }
   }

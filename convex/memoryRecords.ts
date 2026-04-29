@@ -205,23 +205,39 @@ export const embeddingStats = query({
   },
 });
 
-// Returns memoryIds + content for active memories that don't have an
-// embedding yet, in order of importance (highest first). Paginated so the
-// re-embed loop doesn't load everything at once.
-export const listUnembedded = query({
-  args: { limit: v.optional(v.number()) },
+// Cursor-based scan over active memories that yields the unembedded ones.
+// Returns at most `pageSize` rows from the underlying index, and the caller
+// is expected to walk pages via `continueCursor` until `isDone`. A given
+// page may contain fewer unembedded rows than were scanned (the rest had
+// embeddings and were filtered out).
+//
+// Why a cursor rather than a top-N sort by importance: the previous
+// implementation took 5,000 rows per call and filtered in-process, so each
+// pagination step was O(total memories). With the cursor each step is
+// O(pageSize). Re-embed throughput is unchanged (we still process every
+// unembedded row exactly once) but Convex query cost stays bounded as the
+// memory corpus grows.
+export const listUnembeddedPage = query({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    pageSize: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
-    const limit = args.limit ?? 50;
-    const all = await ctx.db
+    const result = await ctx.db
       .query("memoryRecords")
       .withIndex("by_lifecycle", (q) => q.eq("lifecycle", "active"))
       .order("desc")
-      .take(COUNTS_SCAN_LIMIT);
-    return all
-      .filter((m) => !m.embedding || m.embedding.length === 0)
-      .sort((a, b) => b.importance - a.importance)
-      .slice(0, limit)
-      .map((m) => ({ memoryId: m.memoryId, content: m.content }));
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: args.pageSize ?? 50,
+      });
+    return {
+      page: result.page
+        .filter((m) => !m.embedding || m.embedding.length === 0)
+        .map((m) => ({ memoryId: m.memoryId, content: m.content })),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
   },
 });
 
