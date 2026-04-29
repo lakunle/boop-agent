@@ -146,6 +146,22 @@ Choosing integrations for spawn_agent:
 
 Available integrations for spawn_agent: {{INTEGRATIONS}}
 
+Pending continuation for this conversation: {{PENDING_CONTINUATION}}
+
+When pending continuation is non-null, a previous sub-agent paused mid-task
+and asked the user to do something by hand (login, OAuth, captcha, file
+pick). Decide based on the user's CURRENT message:
+- If their reply indicates they completed the action (any signal of
+  readiness — "done", "logged in", "ready", "ok", "yes", "now", "go", or
+  similar; OR they say nothing about cancelling and just push forward like
+  "what's the balance?"): IMMEDIATELY call spawn_agent with the saved
+  resume_task, the saved integrations, and a name like "resume". Do NOT
+  ask for clarification first — the user is waiting. Send_ack right before
+  if it'll take a while.
+- If they cancel, change topic, or say it didn't work: tell the user
+  briefly ("got it, dropping that"), call clear_pending_continuation, and
+  proceed normally with their new request.
+
 Format: Plain iMessage-friendly text. Markdown sparingly. Keep replies under ~400 chars when you can.`;
 
 interface HandleOpts {
@@ -177,6 +193,10 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   broadcast(opts.kind === "proactive" ? "proactive_notice" : "user_message", {
     conversationId: opts.conversationId,
     content: opts.content,
+  });
+
+  const pendingContinuation = await convex.query(api.pendingContinuations.get, {
+    conversationId: opts.conversationId,
   });
 
   const memoryServer = createMemoryMcp(opts.conversationId);
@@ -229,6 +249,11 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     ],
   });
 
+  // Set by spawn_agent when a sub-agent paused for user action. The post-loop
+  // logic uses this to skip the "(no reply)" fallback so the user doesn't
+  // receive a placeholder message after the sub-agent already sent its own.
+  let dispatcherSilent = false;
+
   const spawnServer = createSdkMcpServer({
     name: "boop-spawn",
     version: "0.1.0",
@@ -252,6 +277,17 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
             conversationId: opts.conversationId,
             name: args.name,
           });
+          if (res.status === "paused") {
+            dispatcherSilent = true;
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `[agent ${res.agentId} PAUSED — waiting for user to complete a hand-action]\n\nThe sub-agent already messaged the user with what to do. DO NOT relay anything else for this turn — return an empty assistant message. Boop will re-spawn the agent when the user replies.`,
+                },
+              ],
+            };
+          }
           return {
             content: [
               {
@@ -274,10 +310,32 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n");
 
+  const pendingServer = createSdkMcpServer({
+    name: "boop-pending",
+    version: "0.1.0",
+    tools: [
+      tool(
+        "clear_pending_continuation",
+        "Drop any pending continuation set by a paused sub-agent for THIS conversation. Call this when the user changes topic, cancels, or reports the hand-action didn't work — anything that means we shouldn't auto-resume the saved task. No-op when there's nothing pending.",
+        {},
+        async () => {
+          await convex.mutation(api.pendingContinuations.clear, {
+            conversationId: opts.conversationId,
+          });
+          return { content: [{ type: "text" as const, text: "Pending continuation cleared." }] };
+        },
+      ),
+    ],
+  });
+
+  const pendingDescription = pendingContinuation
+    ? `RESUME_TASK="${pendingContinuation.resumeTask.replace(/"/g, '\\"')}", INTEGRATIONS=[${pendingContinuation.integrations.join(", ")}], asked ${Math.round((Date.now() - pendingContinuation.askedAt) / 1000)}s ago by agent ${pendingContinuation.pausedByAgentId ?? "?"}`
+    : "(none)";
+
   const systemPrompt = INTERACTION_SYSTEM.replace(
     "{{INTEGRATIONS}}",
     integrations.join(", ") || "(no integrations configured yet)",
-  );
+  ).replace("{{PENDING_CONTINUATION}}", pendingDescription);
 
   const prompt = historyBlock
     ? `Prior turns:\n${historyBlock}\n\nCurrent message:\n${opts.content}`
@@ -303,6 +361,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           "boop-draft-decisions": draftDecisionServer,
           "boop-ack": ackServer,
           "boop-self": selfServer,
+          "boop-pending": pendingServer,
         },
         allowedTools: [
           "mcp__boop-memory__write_memory",
@@ -315,6 +374,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           "mcp__boop-draft-decisions__list_drafts",
           "mcp__boop-draft-decisions__send_draft",
           "mcp__boop-draft-decisions__reject_draft",
+          "mcp__boop-pending__clear_pending_continuation",
           "mcp__boop-ack__send_ack",
           "mcp__boop-self__get_config",
           "mcp__boop-self__set_model",
@@ -369,7 +429,11 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     reply = "Sorry — I hit an error processing that. Try again in a moment.";
   }
 
-  reply = reply.trim() || "(no reply)";
+  // When a sub-agent paused for user action it already sent its own message —
+  // don't fall back to the "(no reply)" placeholder, since that'd send a
+  // useless string to the user. Returning empty here makes the caller skip
+  // the iMessage send entirely.
+  reply = dispatcherSilent ? reply.trim() : reply.trim() || "(no reply)";
 
   if (usage.costUsd > 0 || usage.inputTokens > 0) {
     log(
