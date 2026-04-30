@@ -9,6 +9,7 @@ import { createAutomationMcp } from "./automation-tools.js";
 import { createDraftDecisionMcp } from "./draft-tools.js";
 import { createSelfMcp } from "./self-tools.js";
 import { getRuntimeModel } from "./runtime-config.js";
+import { getChannelPrimary } from "./runtime-config.js";
 import { broadcast } from "./broadcast.js";
 import { dispatch } from "./channels/index.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
@@ -267,12 +268,23 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     ],
   });
 
-  const history = await convex.query(api.messages.recent, {
-    conversationId: opts.conversationId,
+  const channelPrimaries = await Promise.all([
+    getChannelPrimary("sms"),
+    getChannelPrimary("tg"),
+  ]);
+  const conversationIds = Array.from(
+    new Set(
+      [opts.conversationId, ...channelPrimaries].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  );
+  const history = await convex.query(api.messages.recentAcrossChannels, {
+    conversationIds,
     limit: 10,
   });
   const historyBlock = history
-    .slice(0, -1)
+    .filter((m) => m.turnId !== turnId)
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n");
 
