@@ -6,6 +6,7 @@ import { buildMcpServersForIntegrations, listIntegrations } from "./integrations
 import { createDraftStagingMcp } from "./draft-tools.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
 import { getRuntimeModel } from "./runtime-config.js";
+import { createPdfMcp } from "./pdf-tools.js";
 
 const running = new Map<string, AbortController>();
 
@@ -71,10 +72,12 @@ Style:
 - Prefer markdown with **bold** keywords and • bullets.
 - Under 500 words unless explicitly asked for more.
 - If you can't complete something, say why in one sentence.
+- If you generated a PDF via the boop-pdf tool, do NOT paste the URL or filename path in your response. The interaction agent attaches the file automatically. Just say what you produced — e.g. "Generated INV-2026-0042 — $4,200 to Acme."
 
 Safety:
 - Anything that sends a message, creates an event, or takes an external action: call save_draft with a JSON payload instead of the real send/create tool. Return the summary so the interaction agent can show it to the user.
-- Only the interaction agent's send_draft tool commits. You never commit.`;
+- Only the interaction agent's send_draft tool commits. You never commit.
+- If a PDF render fails, retry once with a simpler layout. If the second attempt fails, return a single sentence telling the user what failed and offer a plain-text fallback. Never paste raw error text.`;
 
 export interface SpawnOptions {
   task: string;
@@ -122,9 +125,13 @@ export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResu
   const draftServer = opts.conversationId
     ? createDraftStagingMcp(opts.conversationId)
     : undefined;
+  const pdfServer = opts.conversationId
+    ? createPdfMcp(opts.conversationId, agentId)
+    : undefined;
   const mcpServers = {
     ...integrationServers,
     ...(draftServer ? { "boop-drafts": draftServer } : {}),
+    ...(pdfServer ? { "boop-pdf": pdfServer } : {}),
   };
   const allowedTools = [
     "WebSearch",
