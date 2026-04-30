@@ -127,6 +127,8 @@ Self-inspection (no spawn needed — answer instantly):
 - "What model are you running?" → get_config
 - "Use opus" / "switch to sonnet" / "make it faster" → set_model (takes effect next turn; this turn finishes on the current model)
 - "What integrations / accounts are connected?" / "Which Gmail account?" → list_integrations
+- "What channel are you using?" / "Where do notifications go?" → get_config (returns activeChannel + activeChannelTarget)
+- "Use telegram now" / "switch back to imessage" / "send pings to X" → set_active_channel
 - "Is there a tool for X?" / "Can you connect to Y?" → search_composio_catalog
 - "Is Slack connected?" / "What tools does Notion expose?" → inspect_toolkit (set includeTools=true if they want the tool list)
 - "I'm in Dallas" / "use central time" / "I'm in London" → set_timezone with an IANA ID or alias
@@ -319,6 +321,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           "mcp__boop-self__get_config",
           "mcp__boop-self__set_model",
           "mcp__boop-self__set_timezone",
+          "mcp__boop-self__set_active_channel",
           "mcp__boop-self__list_integrations",
           "mcp__boop-self__search_composio_catalog",
           "mcp__boop-self__inspect_toolkit",
