@@ -34,6 +34,7 @@ export const CURATED_TOOLKITS: CuratedToolkit[] = [
   { slug: "trello", displayName: "Trello", authMode: "managed" },
   { slug: "asana", displayName: "Asana", authMode: "managed" },
   { slug: "jira", displayName: "Jira", authMode: "managed" },
+  { slug: "confluence", displayName: "Confluence", authMode: "byo" },
   { slug: "airtable", displayName: "Airtable", authMode: "managed" },
   { slug: "figma", displayName: "Figma", authMode: "managed" },
   { slug: "dropbox", displayName: "Dropbox", authMode: "managed" },
