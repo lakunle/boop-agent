@@ -7,10 +7,11 @@ import { recordChannelPrimary } from "../runtime-config.js";
 import type { Channel, ChannelId, ConversationId, ParsedInbound, SendOpts } from "./types.js";
 import { channelIdOf } from "./types.js";
 import { sendblueChannel } from "./sendblue.js";
+import { telegramChannel } from "./telegram.js";
 
-// NOTE: telegramChannel is registered in a later phase.
 const registry: Partial<Record<ChannelId, Channel>> = {
   sms: sendblueChannel,
+  tg: telegramChannel,
 };
 
 export function getChannel(conversationId: string): Channel | null {
