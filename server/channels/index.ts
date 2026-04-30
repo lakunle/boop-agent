@@ -19,6 +19,11 @@ export function getChannel(conversationId: string): Channel | null {
   return registry[id] ?? null;
 }
 
+/** Look up a channel by its id, no conversationId needed. */
+export function getChannelById(id: ChannelId): Channel | null {
+  return registry[id] ?? null;
+}
+
 export async function dispatch(
   conversationId: ConversationId,
   text: string,

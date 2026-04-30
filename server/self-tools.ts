@@ -10,16 +10,14 @@ import { availableIntegrations } from "./execution-agent.js";
 import {
   KNOWN_MODELS,
   MODEL_ALIASES,
+  getChannelPrimary,
   getRuntimeModel,
+  resolveActiveChannel,
   resolveModelInput,
+  setActiveChannel,
   setRuntimeModel,
 } from "./runtime-config.js";
-import {
-  getChannelPrimary,
-  resolveActiveChannel,
-  setActiveChannel,
-} from "./runtime-config.js";
-import { getChannel, listChannels } from "./channels/index.js";
+import { getChannelById, listChannels } from "./channels/index.js";
 import {
   describeUserNow,
   getStoredUserTimezone,
@@ -157,7 +155,7 @@ channel is not configured or the user has not texted it yet.`,
               ? "tg"
               : args.channel) as "sms" | "tg";
 
-          const channel = getChannel(`${target}:_`);
+          const channel = getChannelById(target);
           if (!channel || !channel.isConfigured()) {
             return {
               content: [
