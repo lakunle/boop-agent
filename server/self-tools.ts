@@ -15,6 +15,12 @@ import {
   setRuntimeModel,
 } from "./runtime-config.js";
 import {
+  getChannelPrimary,
+  resolveActiveChannel,
+  setActiveChannel,
+} from "./runtime-config.js";
+import { getChannel, listChannels } from "./channels/index.js";
+import {
   describeUserNow,
   getStoredUserTimezone,
   resolveTimezoneInput,
@@ -33,6 +39,9 @@ export function createSelfMcp() {
         async () => {
           const integrations = availableIntegrations();
           const tzInfo = await describeUserNow();
+          const { channel: activeChannel } = await resolveActiveChannel();
+          const activeChannelTarget = await getChannelPrimary(activeChannel);
+          const configuredChannels = listChannels().map((c) => c.id);
           const config = {
             model: await getRuntimeModel(),
             envDefault: process.env.BOOP_MODEL ?? "claude-sonnet-4-6",
@@ -45,6 +54,9 @@ export function createSelfMcp() {
             composioEnabled: Boolean(process.env.COMPOSIO_API_KEY),
             embeddingsEnabled: Boolean(process.env.VOYAGE_API_KEY),
             sendblueEnabled: Boolean(process.env.SENDBLUE_API_KEY),
+            activeChannel,
+            activeChannelTarget,
+            configuredChannels,
           };
           return {
             content: [{ type: "text" as const, text: JSON.stringify(config, null, 2) }],
@@ -120,6 +132,66 @@ Cost note (approximate, per 1M output tokens): Opus 4.7 ≈ $75, Sonnet 4.6 ≈ 
               {
                 type: "text" as const,
                 text: `Model override set to ${resolved}. Next agent run (interaction or sub-agent) will use it. This current turn keeps the previous model.`,
+              },
+            ],
+          };
+        },
+      ),
+      tool(
+        "set_active_channel",
+        `Switch which channel receives unsolicited messages (automation results,
+proactive nudges). Use when the user says things like "use telegram now",
+"switch back to imessage", "send notifications to telegram".
+Direct replies always go to whichever channel the user texted from —
+this only affects unsolicited messages. Returns an error if the target
+channel is not configured or the user has not texted it yet.`,
+        {
+          channel: z
+            .enum(["sms", "tg", "imessage", "telegram"])
+            .describe('Channel to make active. "sms"/"imessage" and "tg"/"telegram" are aliases.'),
+        },
+        async (args) => {
+          const target = (args.channel === "imessage"
+            ? "sms"
+            : args.channel === "telegram"
+              ? "tg"
+              : args.channel) as "sms" | "tg";
+
+          const channel = getChannel(`${target}:_`);
+          if (!channel || !channel.isConfigured()) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `${target === "tg" ? "Telegram" : "iMessage"} is not configured on this server. ` +
+                    `Set ${target === "tg" ? "TELEGRAM_BOT_TOKEN" : "SENDBLUE_API_KEY"} in .env.local and restart.`,
+                },
+              ],
+            };
+          }
+
+          const primary = await getChannelPrimary(target);
+          if (!primary) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    target === "tg"
+                      ? `I haven't received a message from you on Telegram yet. Text @${process.env.TELEGRAM_BOT_USERNAME ?? "<bot_username>"} once, then try again.`
+                      : `I haven't received a message from you on iMessage yet. Text the Boop number once, then try again.`,
+                },
+              ],
+            };
+          }
+
+          await setActiveChannel(target);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Active channel set to ${channel.label}. Automations and proactive nudges will go to ${primary} from now on.`,
               },
             ],
           };
