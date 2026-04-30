@@ -167,6 +167,14 @@ function showBanner(url, stable) {
     ? `\n  → First time? Sendblue dashboard → API Settings → Webhook\n    Configuration → add ${webhook} as INBOUND MESSAGE.\n`
     : ``;
 
+  const telegramBlock = envVars.TELEGRAM_BOT_TOKEN
+    ? `\n  📮 Telegram webhook (inbound):   ${url}/telegram/webhook${
+        envVars.TELEGRAM_BOT_USERNAME
+          ? `\n  🤖 Telegram bot:                 @${envVars.TELEGRAM_BOT_USERNAME}`
+          : ""
+      }`
+    : "";
+
   console.log(`
 ${C.banner}${line}
   Boop is ready — ${headline}
@@ -174,7 +182,7 @@ ${C.banner}${line}
   🐶 Debug dashboard (click me):   ${dashboard}
   🌐 Public URL:                   ${url}
   📮 Sendblue webhook (inbound):   ${webhook}
-${fromLine}${guide}
+${fromLine}${telegramBlock}${guide}
 ${line}${C.reset}${footer}`);
 }
 
@@ -257,6 +265,27 @@ async function autoRegisterWebhook(publicUrl) {
   await new Promise((r) => child.on("exit", r));
 }
 
+async function autoRegisterTelegramWebhook(publicUrl) {
+  if (!envVars.TELEGRAM_BOT_TOKEN) return;
+  if (envVars.TELEGRAM_AUTO_WEBHOOK === "false") return;
+  const prefix = `${C.ngrok}tg-hook${C.reset} │ `;
+  const child = spawn("node", ["scripts/telegram-webhook.mjs", publicUrl], {
+    cwd: root,
+    env: { ...process.env },
+  });
+  child.stdout.on("data", (d) => {
+    for (const line of d.toString().split("\n")) {
+      if (line.trim()) process.stdout.write(prefix + line + "\n");
+    }
+  });
+  child.stderr.on("data", (d) => {
+    for (const line of d.toString().split("\n")) {
+      if (line.trim()) process.stdout.write(prefix + line + "\n");
+    }
+  });
+  await new Promise((r) => child.on("exit", r));
+}
+
 async function autoRegisterComposioWebhook(publicUrl) {
   if (envVars.COMPOSIO_AUTO_WEBHOOK === "false") return;
   if (!envVars.COMPOSIO_API_KEY) return;
@@ -296,6 +325,7 @@ Promise.all([
         // so we can refresh it on every restart regardless of whether the
         // domain is reserved.
         await autoRegisterComposioWebhook(ngrokUrl);
+        await autoRegisterTelegramWebhook(ngrokUrl);
         showBanner(ngrokUrl, Boolean(ngrokDomain));
       } else {
         console.log(
@@ -303,6 +333,7 @@ Promise.all([
         );
       }
     } else if (hasStaticUrl) {
+      await autoRegisterTelegramWebhook(publicUrl);
       showBanner(publicUrl, true);
     } else {
       const line = "═".repeat(68);
