@@ -1,8 +1,7 @@
 import express from "express";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
-import { handleUserMessage } from "./interaction-agent.js";
-import { broadcast } from "./broadcast.js";
+import { runTurn } from "./channels/index.js";
 
 const API_BASE = "https://api.sendblue.com/api";
 const MAX_CHUNK = 2900;
@@ -174,51 +173,13 @@ export function createSendblueRouter(): express.Router {
       }
     }
 
-    const conversationId = `sms:${from_number}`;
-    const turnTag = Math.random().toString(36).slice(2, 8);
-    const preview = content.length > 100 ? content.slice(0, 100) + "…" : content;
-    console.log(`[turn ${turnTag}] ← ${from_number}: ${JSON.stringify(preview)}`);
-    const start = Date.now();
-
-    broadcast("message_in", { conversationId, content, from_number, handle: message_handle });
     res.json({ ok: true });
 
-    const stopTyping = startTypingLoop(from_number);
-    try {
-      const reply = await handleUserMessage({
-        conversationId,
-        content,
-        turnTag,
-        onThinking: (t) => broadcast("thinking", { conversationId, t }),
-      });
-      if (reply) {
-        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-        const replyPreview = reply.length > 100 ? reply.slice(0, 100) + "…" : reply;
-        console.log(
-          `[turn ${turnTag}] → reply (${elapsed}s, ${reply.length} chars): ${JSON.stringify(replyPreview)}`,
-        );
-        // Pick up any PDF the agent generated during this turn so we can
-        // attach it to the iMessage. `since: start` ensures only PDFs
-        // produced this turn attach (a follow-up "thanks!" wouldn't re-send
-        // last hour's invoice).
-        const artifact = await convex.query(api.pdfArtifacts.latestForConversation, {
-          conversationId,
-          since: start,
-        });
-        await sendImessage(from_number, reply, artifact ? { mediaUrl: artifact.signedUrl } : {});
-        await convex.mutation(api.messages.send, {
-          conversationId,
-          role: "assistant",
-          content: reply,
-        });
-      } else {
-        console.log(`[turn ${turnTag}] → (no reply)`);
-      }
-    } catch (err) {
-      console.error(`[turn ${turnTag}] handler error`, err);
-    } finally {
-      stopTyping();
-    }
+    await runTurn({
+      conversationId: `sms:${from_number}` as `sms:${string}`,
+      content,
+      from: from_number,
+    });
   });
 
   return router;
