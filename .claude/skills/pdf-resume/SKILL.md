@@ -52,11 +52,11 @@ You produce a single-page (strict — no overflow) resume or one-page profile.
 </style></head><body>
   <div class="page">
     <div class="sidebar">
-      <div class="name">Lakunle<br/>Akinde</div>
+      <div class="name">Mira<br/>Tanaka</div>
       <div class="title">Designer · Engineer</div>
       <h3>Contact</h3>
       <p>hello@example.com</p>
-      <p>Lagos, Nigeria</p>
+      <p>Kyoto, Japan</p>
       <h3>Skills</h3>
       <ul>
         <li>TypeScript / React</li>
@@ -88,7 +88,7 @@ You produce a single-page (strict — no overflow) resume or one-page profile.
       <h2>Education</h2>
       <div class="role">
         <div class="head"><span>BSc Computer Science</span><span class="when">2018</span></div>
-        <div class="where">University of Lagos</div>
+        <div class="where">Kyoto University</div>
       </div>
     </div>
   </div>
@@ -98,7 +98,7 @@ You produce a single-page (strict — no overflow) resume or one-page profile.
 ## Examples
 
 **Input:** "Build me a resume from my LinkedIn data" (with the data passed in)
-**Filename:** `resume-lakunle-akinde-2026-04-29.pdf`
+**Filename:** `resume-mira-tanaka-2026-04-29.pdf`
 **Returns:** "Resume — 4 roles, 8 skills, single page."
 
 **Input:** "Make a one-pager about me for the conference badge"
