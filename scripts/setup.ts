@@ -470,6 +470,78 @@ Before you start:
     );
   }
 
+  // ---- Telegram (optional) ------------------------------------------------
+  banner("Telegram — optional second messaging channel");
+  console.log(`
+A second channel alongside iMessage. Get a bot token from @BotFather on
+Telegram (/newbot, follow prompts). Skip if you only want iMessage.
+`);
+  const existingTelegramToken = existing.TELEGRAM_BOT_TOKEN ?? "";
+  const { telegramMode } = await prompts(
+    {
+      type: "select",
+      name: "telegramMode",
+      message: existingTelegramToken
+        ? "Telegram bot token detected. Keep it or replace?"
+        : "Enable Telegram now?",
+      choices: existingTelegramToken
+        ? [
+            { title: "Keep existing token", value: "keep" },
+            { title: "Replace", value: "replace" },
+            { title: "Skip", value: "skip" },
+          ]
+        : [
+            { title: "Yes — paste bot token", value: "replace" },
+            { title: "Skip for now", value: "skip" },
+          ],
+      initial: 0,
+    },
+    {
+      onCancel: () => {
+        console.log("Setup cancelled.");
+        process.exit(1);
+      },
+    },
+  );
+
+  if (telegramMode === "replace") {
+    const { TELEGRAM_BOT_TOKEN } = await prompts(
+      {
+        type: "password",
+        name: "TELEGRAM_BOT_TOKEN",
+        message: "Paste your Telegram bot token (leave blank to skip):",
+        initial: "",
+      },
+      {
+        onCancel: () => {
+          console.log("Setup cancelled.");
+          process.exit(1);
+        },
+      },
+    );
+    if (TELEGRAM_BOT_TOKEN) {
+      (answers as any).TELEGRAM_BOT_TOKEN = TELEGRAM_BOT_TOKEN;
+      // Generate a fresh webhook secret if one isn't already set.
+      if (!existing.TELEGRAM_WEBHOOK_SECRET) {
+        const { randomBytes } = await import("node:crypto");
+        (answers as any).TELEGRAM_WEBHOOK_SECRET = randomBytes(32).toString("hex");
+      }
+      console.log(`
+Telegram saved. Next:
+  1. Run \`npm run dev\` and message your bot once
+  2. Server log will show your chat_id (denied as pending)
+  3. Run \`npm run telegram:approve\` to allow it
+`);
+    } else {
+      (answers as any).TELEGRAM_BOT_TOKEN = existingTelegramToken;
+    }
+  } else if (telegramMode === "keep") {
+    (answers as any).TELEGRAM_BOT_TOKEN = existingTelegramToken;
+  } else {
+    // skip
+    (answers as any).TELEGRAM_BOT_TOKEN = existingTelegramToken;
+  }
+
   // ---- Tunnel configuration ------------------------------------------------
   banner("Tunnel — public URL for Sendblue to reach your server");
   console.log(`
