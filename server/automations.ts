@@ -5,6 +5,7 @@ import { spawnExecutionAgent } from "./execution-agent.js";
 import { dispatch } from "./channels/index.js";
 import { broadcast } from "./broadcast.js";
 import { getUserTimezone } from "./timezone-config.js";
+import { resolveActiveChannel } from "./runtime-config.js";
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -67,17 +68,25 @@ async function runAutomation(a: {
       agentId: res.agentId,
     });
 
-    if (a.notifyConversationId && res.result) {
-      const preamble = `[${a.name}]\n\n`;
-      await dispatch(
-        a.notifyConversationId as `sms:${string}` | `tg:${string}`,
-        preamble + res.result,
-      );
-      await convex.mutation(api.messages.send, {
-        conversationId: a.notifyConversationId,
-        role: "assistant",
-        content: preamble + res.result,
-      });
+    if (res.result) {
+      const target =
+        a.notifyConversationId ?? (await resolveActiveChannel()).conversationId;
+      if (target) {
+        const preamble = `[${a.name}]\n\n`;
+        await dispatch(
+          target as `sms:${string}` | `tg:${string}`,
+          preamble + res.result,
+        );
+        await convex.mutation(api.messages.send, {
+          conversationId: target,
+          role: "assistant",
+          content: preamble + res.result,
+        });
+      } else {
+        console.warn(
+          `[automation ${a.name}] no notify target — set notifyConversationId or active channel`,
+        );
+      }
     }
 
     broadcast("automation_completed", { automationId: a.automationId, runId });
