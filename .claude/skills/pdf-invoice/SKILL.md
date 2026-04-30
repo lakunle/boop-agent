@@ -61,7 +61,7 @@ You produce a polished, business-ready invoice PDF.
 </style></head><body>
   <div class="header">
     <div class="payee">
-      <h1>Studio Hera</h1>
+      <h1>Meridian Studio</h1>
       <p>14 Atlantic Way · hello@example.com</p>
     </div>
     <div class="meta">

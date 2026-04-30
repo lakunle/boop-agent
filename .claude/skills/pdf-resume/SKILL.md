@@ -70,7 +70,7 @@ You produce a single-page (strict — no overflow) resume or one-page profile.
     <div class="main">
       <h2>Experience</h2>
       <div class="role">
-        <div class="head"><span>Hera Studio</span><span class="when">2023 – present</span></div>
+        <div class="head"><span>Meridian Studio</span><span class="when">2023 – present</span></div>
         <div class="where">Founder · Remote</div>
         <ul>
           <li>Build personal-agent infrastructure on top of Claude Agent SDK and Convex.</li>

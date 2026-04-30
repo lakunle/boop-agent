@@ -6,15 +6,24 @@ import { convex } from "./convex-client.js";
 
 let browserPromise: Promise<Browser> | null = null;
 let renderCount = 0;
+let restarting = false;
 const RESTART_AFTER = 100;
 const RENDER_TIMEOUT_MS = 30_000;
 
 async function getBrowser(): Promise<Browser> {
-  if (renderCount >= RESTART_AFTER && browserPromise) {
-    const prev = await browserPromise;
-    await prev.close().catch(() => {});
-    browserPromise = null;
-    renderCount = 0;
+  // Restart only one caller at a time. Without this guard, two concurrent
+  // calls at the 100-render boundary can each launch a fresh Chromium and
+  // overwrite each other's reference, leaking the orphaned process.
+  if (renderCount >= RESTART_AFTER && browserPromise && !restarting) {
+    restarting = true;
+    try {
+      const prev = await browserPromise;
+      await prev.close().catch(() => {});
+      browserPromise = null;
+      renderCount = 0;
+    } finally {
+      restarting = false;
+    }
   }
   if (!browserPromise) {
     browserPromise = puppeteer.launch({

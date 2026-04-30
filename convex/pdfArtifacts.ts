@@ -59,8 +59,17 @@ export const generate = action({
     const storageId = await ctx.storage.store(pdfBlob);
     const thumbnailStorageId = await ctx.storage.store(thumbBlob);
 
-    const signedUrl = (await ctx.storage.getUrl(storageId)) ?? "";
-    const thumbnailUrl = (await ctx.storage.getUrl(thumbnailStorageId)) ?? "";
+    // ctx.storage.getUrl returns null only if the file doesn't exist — which
+    // shouldn't happen since we just stored it. If it does, that's a real
+    // failure (storage broken, file gone) and we should surface it instead
+    // of silently caching an empty URL that breaks the iMessage attachment.
+    const signedUrl = await ctx.storage.getUrl(storageId);
+    const thumbnailUrl = await ctx.storage.getUrl(thumbnailStorageId);
+    if (!signedUrl || !thumbnailUrl) {
+      throw new Error(
+        `pdfArtifacts.generate: storage.getUrl returned null after store (signedUrl=${!!signedUrl}, thumbnailUrl=${!!thumbnailUrl})`,
+      );
+    }
 
     const artifactId: string = await ctx.runMutation(
       internal.pdfArtifacts.createInternal,
