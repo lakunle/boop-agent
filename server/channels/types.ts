@@ -1,0 +1,51 @@
+import type { Router } from "express";
+
+/** Identifier for each channel; used as the conversationId prefix and registry key. */
+export type ChannelId = "sms" | "tg";
+
+/** Conversation IDs are channel-prefixed: "sms:+15551234567" or "tg:123456789". */
+export type ConversationId = `${ChannelId}:${string}`;
+
+export interface SendOpts {
+  /** Optional URL of media to attach (PDFs from artifact pipeline). */
+  mediaUrl?: string;
+}
+
+/** What every channel hands to runTurn after parsing its webhook payload. */
+export interface ParsedInbound {
+  conversationId: ConversationId;
+  /** Human-readable identifier of sender for logs only. */
+  from: string;
+  content: string;
+}
+
+export interface Channel {
+  readonly id: ChannelId;
+  readonly label: string;
+  /** Path the webhook router mounts at, e.g. "/sendblue", "/telegram". */
+  readonly webhookPath: string;
+
+  /** True iff env vars are set and the channel can actually send. */
+  isConfigured(): boolean;
+
+  /** Send a final reply or unsolicited message. Handles chunking, markdown, attachments. */
+  send(conversationId: ConversationId, text: string, opts?: SendOpts): Promise<void>;
+
+  /** Start a typing indicator that auto-renews. Returns a stop fn. No-op if unsupported. */
+  startTypingLoop(conversationId: ConversationId): () => void;
+
+  /** Express router for the channel's webhook. */
+  webhookRouter(): Router;
+}
+
+/** Strip the channel prefix from a ConversationId. "tg:123" -> "123" */
+export function stripChannelPrefix(conversationId: ConversationId): string {
+  const idx = conversationId.indexOf(":");
+  return idx === -1 ? conversationId : conversationId.slice(idx + 1);
+}
+
+/** Extract the channel id from a ConversationId. "tg:123" -> "tg" */
+export function channelIdOf(conversationId: string): ChannelId | null {
+  const prefix = conversationId.split(":", 1)[0];
+  return prefix === "sms" || prefix === "tg" ? prefix : null;
+}
