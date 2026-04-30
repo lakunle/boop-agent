@@ -8,6 +8,25 @@ Format:
 
 ---
 
+## Unreleased — Telegram channel
+
+- Added: `server/channels/` — channel-abstraction layer with a `Channel` interface (types, registry, dispatch, runTurn). Both Sendblue and Telegram register through this. The runTurn function is the shared inbound turn runner extracted from the Sendblue webhook.
+- Added: Telegram bot integration (`server/channels/telegram.ts`). Inbound text + voice notes, outbound text with PDF document attachment fallback, typing indicator, hybrid env+Convex allowlist (fail-closed), webhook secret verification, dedup on `update_id`. Mounted at `/telegram/webhook`.
+- Added: voice transcription via OpenAI `gpt-4o-mini-transcribe` (`server/transcribe.ts`). Telegram inbound voice notes are downloaded, transcribed, and processed exactly like text — content stored as `🎤 (voice m:ss) <transcript>`. Cap of 10 minutes (`TELEGRAM_VOICE_MAX_DURATION` to override). Without `OPENAI_API_KEY`, voice notes get a polite "type instead" reply. Cost recorded in `usageRecords` with `source: "transcribe"`.
+- Added: active-channel system. `set_active_channel` self-tool flips which channel receives unsolicited messages (automation results, proactive nudges). Direct replies always follow the channel the user texted from. Defaults to `sms`. Persisted in the existing `settings` table as `activeChannel` and `channelPrimary.<channel>`. Dispatcher's recent-history window now unions across both channels' primaries via the new `messages.recentAcrossChannels` query — cross-channel context continuity without `recall()`.
+- Added: hybrid Telegram allowlist. Static via `TELEGRAM_ALLOWED_CHAT_IDS` env var, dynamic via Convex `telegramAllowedChatIds` (no restart needed). Rejected chat_ids land in `telegramPendingAllowlist` for interactive approval. New `npm run telegram:approve` CLI walks the queue.
+- Added: Telegram webhook auto-registration. `scripts/telegram-webhook.mjs` calls Telegram's `setWebhook` API on every `npm run dev` boot (idempotent on Telegram's side). Set `TELEGRAM_AUTO_WEBHOOK=false` to opt out. Banner in `npm run dev` shows the Telegram URL + bot username when configured.
+- Added: env vars — `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_AUTO_WEBHOOK`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_VOICE_MAX_DURATION`. See `.env.example`.
+- Added: Convex tables `telegramDedup`, `telegramPendingAllowlist`, `telegramAllowedChatIds`. Empty until first inbound.
+- Added: `transcribe` source on `usageRecords` so Whisper costs roll up alongside LLM costs in `usageRecords:summary`.
+- Added: optional `silent` boolean on `automations` rows for "run but don't notify" workflows. New automations write `silent` based on the `notify` arg passed to `create_automation`.
+- Added: optional `boolean` arg `notify` on the `create_automation` self-tool (default true). Pass `notify: false` to suppress channel push; the run still records in `automationRuns` so the result is queryable.
+- Added: docs/telegram-verification.md — manual verification checklist for the feature.
+- Changed: dispatcher and outbound flows now route through `dispatch(conversationId, ...)` from the channel registry. Sendblue still functions identically; the prefix-checking branches at `interaction-agent.ts:send_ack`, `automations.ts:cron-result`, and `proactive-email.ts:final-reply` are gone.
+- Changed: `broadcast("message_in", ...)` payload renamed/dropped fields. Old: `{ conversationId, content, from_number, handle }`. New: `{ conversationId, content, from }`. No in-repo consumers depend on the old fields; an out-of-tree dashboard subscribed to the WS event would need to read `from` instead of `from_number`.
+- **[BREAKING]** Env var `BOOP_USER_PHONE` removed. Proactive nudges now route to whichever channel is "active" (resolved per `resolveActiveChannel`). Migration: text Boop once on the channel you want notifications on, then `set_active_channel imessage` (or `telegram`). Until you've texted the channel at least once, Boop has no `channelPrimary.<ch>` recorded and proactive dispatch logs a warning and drops.
+- **[BREAKING]** `create_automation` no longer pins `notifyConversationId` to the originating conversation by default. New automations float to the active channel. Existing automation rows keep their pinned `notifyConversationId` and continue working as before. Migration: none required for existing rows. New automations created without an explicit pin go to active channel.
+
 ## Unreleased — Proactive email surfacing
 
 - Added: webhook-driven Gmail watcher. On boot (or on every `npm run dev` ngrok URL change), Boop registers a project-level webhook subscription against Composio's `/api/v3.1/webhook_subscriptions` endpoint and a `GMAIL_NEW_GMAIL_MESSAGE` trigger instance per active Gmail connection. When Composio fires `composio.trigger.message`, the new `POST /composio/webhook` route verifies the HMAC signature, runs a Haiku classifier, and on a positive decision routes the summary into the interaction agent as a synthetic `role="system"` message — the IA decides the iMessage tone and any follow-up.
