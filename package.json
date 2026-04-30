@@ -10,6 +10,7 @@
     "sendblue:sync": "node scripts/sendblue-sync.mjs",
     "sendblue:webhook": "node scripts/sendblue-webhook.mjs",
     "pdf:smoke": "node scripts/pdf-smoke.mjs",
+    "pdf:smoke:sendblue": "node scripts/pdf-smoke-sendblue.mjs",
     "preflight": "node scripts/preflight.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:parallel": "npm-run-all --parallel dev:server dev:convex dev:debug",
