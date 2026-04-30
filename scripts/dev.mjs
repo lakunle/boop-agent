@@ -77,10 +77,21 @@ const NOISE_TRIGGERS = [
 ];
 const STACK_LINE = /^\s+at\s/;
 
+// Append --dns-result-order=ipv4first so undici/fetch in children prefers IPv4.
+// Some networks (mine) have broken IPv6 to Cloudflare-fronted endpoints
+// (Convex deployments, npm registry, etc.) and the default happy-eyeballs
+// dual-stack attempt hangs intermittently — visible as tick/sweep timeouts.
+const childNodeOptions = [
+  process.env.NODE_OPTIONS ?? "",
+  "--dns-result-order=ipv4first",
+]
+  .join(" ")
+  .trim();
+
 function run(name, cmd, args, readyPattern) {
   const child = spawn(cmd, args, {
     cwd: root,
-    env: { ...process.env, FORCE_COLOR: "1" },
+    env: { ...process.env, FORCE_COLOR: "1", NODE_OPTIONS: childNodeOptions },
   });
   const prefix = `${C[name]}${name.padEnd(6)}${C.reset} │ `;
   let buf = "";
