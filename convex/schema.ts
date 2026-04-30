@@ -260,4 +260,23 @@ export default defineSchema({
     .index("by_artifact_id", ["artifactId"])
     .index("by_conversation_and_createdAt", ["conversationId", "createdAt"])
     .index("by_kind_and_createdAt", ["kind", "createdAt"]),
+
+  telegramDedup: defineTable({
+    updateId: v.number(),
+    claimedAt: v.number(),
+  }).index("by_updateId", ["updateId"]),
+
+  telegramPendingAllowlist: defineTable({
+    chatId: v.number(),
+    username: v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    attemptCount: v.number(),
+  }).index("by_chatId", ["chatId"]),
+
+  telegramAllowedChatIds: defineTable({
+    chatId: v.number(),
+    approvedAt: v.number(),
+  }).index("by_chatId", ["chatId"]),
 });
