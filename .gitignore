@@ -18,3 +18,4 @@ debug/dist/
 .cache/
 .tsbuildinfo
 .superpowers/
+.claude/*.lock
