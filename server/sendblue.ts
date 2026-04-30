@@ -56,7 +56,11 @@ function normalizeE164(n: string | undefined): string | undefined {
   return trimmed;
 }
 
-export async function sendImessage(toNumber: string, text: string): Promise<void> {
+export async function sendImessage(
+  toNumber: string,
+  text: string,
+  opts: { mediaUrl?: string } = {},
+): Promise<void> {
   const h = headers();
   if (!h) {
     console.warn("[sendblue] missing credentials — not sending");
@@ -70,30 +74,61 @@ export async function sendImessage(toNumber: string, text: string): Promise<void
     return;
   }
   const plain = stripMarkdown(text);
-  for (const part of chunk(plain)) {
+  const parts = chunk(plain);
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const isFirst = i === 0;
+    // Attach media on the first chunk only — multi-chunk + media would
+    // deliver the file once per chunk.
+    const body: Record<string, unknown> = {
+      number: toNumber,
+      content: part,
+      from_number: from,
+    };
+    if (isFirst && opts.mediaUrl) body.media_url = opts.mediaUrl;
+
     const res = await fetch(`${API_BASE}/send-message`, {
       method: "POST",
       headers: h,
-      body: JSON.stringify({ number: toNumber, content: part, from_number: from }),
+      body: JSON.stringify(body),
     });
+
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`[sendblue] send failed ${res.status}: ${body}`);
-      if (body.includes("missing required parameter") && body.includes("from_number")) {
+      const errBody = await res.text().catch(() => "");
+      console.error(`[sendblue] send failed ${res.status}: ${errBody}`);
+      // Fallback: media rejected (size, plan, carrier). Re-send as text+URL.
+      if (opts.mediaUrl && isFirst) {
+        console.warn(`[sendblue] media_url rejected — falling back to text URL`);
+        const fallbackRes = await fetch(`${API_BASE}/send-message`, {
+          method: "POST",
+          headers: h,
+          body: JSON.stringify({
+            number: toNumber,
+            from_number: from,
+            content: `${part}\n\n${opts.mediaUrl}`,
+          }),
+        });
+        if (!fallbackRes.ok) {
+          const fbBody = await fallbackRes.text().catch(() => "");
+          console.error(`[sendblue] fallback send also failed ${fallbackRes.status}: ${fbBody}`);
+        }
+      } else if (errBody.includes("missing required parameter") && errBody.includes("from_number")) {
         console.error(
           `[sendblue] → Set SENDBLUE_FROM_NUMBER in .env.local to your Sendblue-provisioned number and restart the server.`,
         );
-      } else if (body.includes("Cannot send messages to self")) {
+      } else if (errBody.includes("Cannot send messages to self")) {
         console.error(
           `[sendblue] → SENDBLUE_FROM_NUMBER is your personal cell. It must be the Sendblue-provisioned number (the one people text TO).`,
         );
-      } else if (body.includes("This phone number is not defined")) {
+      } else if (errBody.includes("This phone number is not defined")) {
         console.error(
           `[sendblue] → Sendblue doesn't recognize from_number=${from}. Run \`npm run sendblue:sync\` to pull the correct one from \`sendblue lines\`, then restart the server.`,
         );
       }
     } else {
-      console.log(`[sendblue] → sent ${part.length} chars to ${toNumber}`);
+      const attachNote = isFirst && opts.mediaUrl ? " + 1 attachment" : "";
+      console.log(`[sendblue] → sent ${part.length} chars${attachNote} to ${toNumber}`);
     }
   }
 }
