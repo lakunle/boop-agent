@@ -197,7 +197,15 @@ export function createSendblueRouter(): express.Router {
         console.log(
           `[turn ${turnTag}] → reply (${elapsed}s, ${reply.length} chars): ${JSON.stringify(replyPreview)}`,
         );
-        await sendImessage(from_number, reply);
+        // Pick up any PDF the agent generated during this turn so we can
+        // attach it to the iMessage. `since: start` ensures only PDFs
+        // produced this turn attach (a follow-up "thanks!" wouldn't re-send
+        // last hour's invoice).
+        const artifact = await convex.query(api.pdfArtifacts.latestForConversation, {
+          conversationId,
+          since: start,
+        });
+        await sendImessage(from_number, reply, artifact ? { mediaUrl: artifact.signedUrl } : {});
         await convex.mutation(api.messages.send, {
           conversationId,
           role: "assistant",
