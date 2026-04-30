@@ -138,6 +138,37 @@ console.log("[smoke] 3. non-allowlisted chat_id pending");
   await convex.mutation(api.telegramAllowlist.dismiss, { chatId: fakeChatId });
 }
 
+console.log("[smoke] 4. voice message inbound");
+{
+  const fileId = env.TELEGRAM_SMOKE_FILE_ID;
+  if (!fileId) {
+    console.log("  ↪ skipped (set TELEGRAM_SMOKE_FILE_ID to a real Telegram file_id to enable)");
+  } else {
+    const updateId = nextUpdateId();
+    const r = await postUpdate({
+      update_id: updateId,
+      message: {
+        message_id: updateId,
+        from: { id: chatId, username: "smoke" },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        voice: { file_id: fileId, duration: 3, mime_type: "audio/ogg" },
+      },
+    });
+    if (r.status !== 200) fail("voice webhook 200", r);
+    await new Promise((r) => setTimeout(r, 4000)); // give Whisper time
+    const msgs = await convex.query(api.messages.recentAcrossChannels, {
+      conversationIds: [`tg:${chatId}`],
+      limit: 5,
+    });
+    const found = msgs.some(
+      (m) => m.role === "user" && /^🎤 \(voice \d+:\d{2}\)/.test(m.content),
+    );
+    if (found) ok("voice transcript persisted with marker");
+    else fail("voice transcript marker not found", msgs.slice(-3));
+  }
+}
+
 if (process.exitCode === 1) {
   console.error("[smoke] FAILED");
   process.exit(1);
