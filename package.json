@@ -11,6 +11,7 @@
     "sendblue:webhook": "node scripts/sendblue-webhook.mjs",
     "telegram:webhook": "node scripts/telegram-webhook.mjs",
     "telegram:approve": "node scripts/telegram-approve.mjs",
+    "telegram:smoke": "node scripts/telegram-smoke.mjs",
     "pdf:smoke": "node scripts/pdf-smoke.mjs",
     "pdf:smoke:sendblue": "node scripts/pdf-smoke-sendblue.mjs",
     "preflight": "node scripts/preflight.mjs",
