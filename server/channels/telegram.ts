@@ -1,10 +1,11 @@
 import express from "express";
 import type { Channel, ChannelId, ConversationId, SendOpts } from "./types.js";
 import { stripChannelPrefix } from "./types.js";
-import { stripMarkdown, chunk } from "./text.js";
+import { stripMarkdown, chunk, formatDuration } from "./text.js";
 import { api } from "../../convex/_generated/api.js";
 import { convex } from "../convex-client.js";
-import { runTurn } from "./index.js";
+import { runTurn, dispatch } from "./index.js";
+import { transcribeAudio } from "../transcribe.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const MAX_TG_CHUNK = 4000; // 4096 hard cap with margin
@@ -49,6 +50,95 @@ async function sendDocument(token: string, chatId: string, mediaUrl: string): Pr
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text: `📎 ${mediaUrl}` }),
     });
+  }
+}
+
+async function downloadTelegramFile(fileId: string): Promise<{ bytes: Buffer; mime: string }> {
+  const tk = token();
+  if (!tk) throw new Error("TELEGRAM_BOT_TOKEN not set");
+  const meta = await fetch(`${TELEGRAM_API}/bot${tk}/getFile?file_id=${encodeURIComponent(fileId)}`);
+  if (!meta.ok) {
+    throw new Error(`getFile failed ${meta.status}`);
+  }
+  const metaJson = (await meta.json()) as {
+    ok: boolean;
+    result?: { file_path?: string };
+  };
+  if (!metaJson.ok || !metaJson.result?.file_path) {
+    throw new Error(`getFile no file_path: ${JSON.stringify(metaJson)}`);
+  }
+  const fileUrl = `${TELEGRAM_API}/file/bot${tk}/${metaJson.result.file_path}`;
+  const dl = await fetch(fileUrl);
+  if (!dl.ok) throw new Error(`download failed ${dl.status}`);
+  const ab = await dl.arrayBuffer();
+  const mime = dl.headers.get("content-type") || "audio/ogg";
+  return { bytes: Buffer.from(ab), mime };
+}
+
+interface TgVoice {
+  file_id: string;
+  duration: number;
+  mime_type?: string;
+}
+
+/**
+ * Download + transcribe a Telegram voice note. Returns the formatted content
+ * string ready for runTurn, or null if any guardrail/error path fired (in which
+ * case a polite reply has already been dispatched to the user).
+ */
+async function resolveVoiceContent(
+  voice: TgVoice,
+  chatId: number,
+): Promise<string | null> {
+  const conversationId = `tg:${chatId}` as ConversationId;
+  const max = Number(process.env.TELEGRAM_VOICE_MAX_DURATION ?? 600);
+  if (voice.duration > max) {
+    await dispatch(
+      conversationId,
+      `That voice note is ${formatDuration(voice.duration)} — longer than I can transcribe (cap ${formatDuration(max)}). Try a shorter clip or type it.`,
+    );
+    return null;
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    await dispatch(
+      conversationId,
+      "Voice notes need OPENAI_API_KEY to be configured. Type your message instead.",
+    );
+    return null;
+  }
+  try {
+    const { bytes, mime } = await downloadTelegramFile(voice.file_id);
+    const { text, costUsd } = await transcribeAudio(
+      bytes,
+      `voice-${voice.file_id}.ogg`,
+      voice.mime_type ?? mime,
+      voice.duration,
+    );
+    if (!text.trim()) {
+      await dispatch(conversationId, "I couldn't hear that — can you type it instead?");
+      return null;
+    }
+    await convex
+      .mutation(api.usageRecords.record, {
+        source: "transcribe",
+        conversationId,
+        model: "gpt-4o-mini-transcribe",
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd,
+        durationMs: voice.duration * 1000,
+      })
+      .catch((err) => console.warn("[telegram] usage record failed", err));
+    return `🎤 (voice ${formatDuration(voice.duration)}) ${text.trim()}`;
+  } catch (err) {
+    console.error("[telegram] transcription error", err);
+    await dispatch(
+      conversationId,
+      "I had trouble transcribing that — can you type it instead?",
+    );
+    return null;
   }
 }
 
@@ -164,17 +254,21 @@ export const telegramChannel: Channel = {
         return;
       }
 
-      // 5. Resolve content (text-only for now; voice handler in a later task)
+      // 5. Resolve content (text or transcribed voice)
       let content: string | null = null;
-      if (typeof msg.text === "string" && msg.text.length > 0) {
+      if (msg.voice) {
+        // Ack early — transcription can take a few seconds and Telegram retries on slow responses.
+        res.json({ ok: true });
+        content = await resolveVoiceContent(msg.voice, chatId);
+        if (!content) return; // resolveVoiceContent already replied with an error
+      } else if (typeof msg.text === "string" && msg.text.length > 0) {
+        res.json({ ok: true });
         content = msg.text;
-      }
-      if (!content) {
+      } else {
         res.json({ ok: true, skipped: true });
         return;
       }
-
-      res.json({ ok: true });
+      if (!content) return;
 
       await runTurn({
         conversationId: `tg:${chatId}` as ConversationId,
