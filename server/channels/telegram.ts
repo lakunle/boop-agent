@@ -2,6 +2,9 @@ import express from "express";
 import type { Channel, ChannelId, ConversationId, SendOpts } from "./types.js";
 import { stripChannelPrefix } from "./types.js";
 import { stripMarkdown, chunk } from "./text.js";
+import { api } from "../../convex/_generated/api.js";
+import { convex } from "../convex-client.js";
+import { runTurn } from "./index.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const MAX_TG_CHUNK = 4000; // 4096 hard cap with margin
@@ -13,6 +16,20 @@ function token(): string | null {
 function redactToken(t: string | null): string {
   if (!t) return "<no-token>";
   return `${t.slice(0, 6)}...${t.slice(-4)}`;
+}
+
+async function isAllowed(chatId: number): Promise<boolean> {
+  const fromEnv = (process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromEnv.includes(String(chatId))) return true;
+  try {
+    return await convex.query(api.telegramAllowlist.isAllowed, { chatId });
+  } catch (err) {
+    console.warn("[telegram] isAllowed Convex check failed", err);
+    return false;
+  }
 }
 
 async function sendDocument(token: string, chatId: string, mediaUrl: string): Promise<void> {
@@ -98,10 +115,74 @@ export const telegramChannel: Channel = {
 
   webhookRouter() {
     const router = express.Router();
-    // Webhook handler is added in the next task.
-    router.post("/webhook", (_req, res) => {
-      res.json({ ok: true, skipped: "not yet implemented" });
+
+    router.post("/webhook", async (req, res) => {
+      // 1. Secret token verification
+      const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
+      if (expected && req.header("x-telegram-bot-api-secret-token") !== expected) {
+        res.status(401).end();
+        return;
+      }
+
+      const update = req.body ?? {};
+      const msg = update.message;
+      const updateId = update.update_id;
+      if (typeof updateId !== "number" || !msg) {
+        res.json({ ok: true, skipped: true });
+        return;
+      }
+
+      // 2. Group/channel chats rejected (chat_id < 0)
+      const chatId = msg.chat?.id;
+      if (typeof chatId !== "number" || chatId < 0) {
+        res.json({ ok: true, skipped: true });
+        return;
+      }
+
+      // 3. Allowlist (fail closed)
+      if (!(await isAllowed(chatId))) {
+        await convex
+          .mutation(api.telegramAllowlist.recordPending, {
+            chatId,
+            username: msg.from?.username,
+            firstName: msg.from?.first_name,
+          })
+          .catch((err) => console.warn("[telegram] recordPending failed", err));
+        console.warn(
+          `[telegram] denied chat_id=${chatId} (@${msg.from?.username ?? "?"}) — pending approval (run \`npm run telegram:approve\`)`,
+        );
+        res.json({ ok: true, denied: true });
+        return;
+      }
+
+      // 4. Dedup
+      const { claimed } = await convex.mutation(api.telegramDedup.claim, {
+        updateId,
+      });
+      if (!claimed) {
+        res.json({ ok: true, deduped: true });
+        return;
+      }
+
+      // 5. Resolve content (text-only for now; voice handler in a later task)
+      let content: string | null = null;
+      if (typeof msg.text === "string" && msg.text.length > 0) {
+        content = msg.text;
+      }
+      if (!content) {
+        res.json({ ok: true, skipped: true });
+        return;
+      }
+
+      res.json({ ok: true });
+
+      await runTurn({
+        conversationId: `tg:${chatId}` as ConversationId,
+        content,
+        from: `tg:${msg.from?.username ? "@" + msg.from.username : chatId}`,
+      });
     });
+
     return router;
   },
 };
