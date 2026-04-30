@@ -160,6 +160,7 @@ export default defineSchema({
     enabled: v.boolean(),
     conversationId: v.optional(v.string()),
     notifyConversationId: v.optional(v.string()),
+    silent: v.optional(v.boolean()),
     lastRunAt: v.optional(v.number()),
     nextRunAt: v.optional(v.number()),
     createdAt: v.number(),

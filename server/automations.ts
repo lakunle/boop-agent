@@ -46,6 +46,7 @@ async function runAutomation(a: {
   timezone?: string;
   conversationId?: string;
   notifyConversationId?: string;
+  silent?: boolean;
 }): Promise<void> {
   const runId = randomId("run");
   await convex.mutation(api.automations.createRun, {
@@ -68,7 +69,7 @@ async function runAutomation(a: {
       agentId: res.agentId,
     });
 
-    if (res.result) {
+    if (res.result && !a.silent) {
       const target =
         a.notifyConversationId ?? (await resolveActiveChannel()).conversationId;
       if (target) {
@@ -125,6 +126,7 @@ export async function tickAutomations(): Promise<void> {
       timezone: a.timezone,
       conversationId: a.conversationId,
       notifyConversationId: a.notifyConversationId,
+      silent: a.silent,
     }).catch((err) => console.error("[automations] run error", err));
   }
 }

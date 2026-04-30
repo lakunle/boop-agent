@@ -47,6 +47,13 @@ Integrations available: ${integrationHint}`,
             .describe(
               "Integration names the sub-agent needs for this task. Pass [] for reminder-only automations that don't need external tools.",
             ),
+          notify: z
+            .boolean()
+            .optional()
+            .default(true)
+            .describe(
+              "If false, the automation runs silently — result is recorded in the run history but not pushed to any channel.",
+            ),
         },
         async (args) => {
           // Resolve the user's timezone now and store it on the automation,
@@ -77,6 +84,7 @@ Integrations available: ${integrationHint}`,
             timezone,
             conversationId,
             notifyConversationId: undefined,
+            silent: !args.notify,
             nextRunAt,
           });
           const nextStr = nextRunAt

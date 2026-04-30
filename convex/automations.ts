@@ -11,6 +11,7 @@ export const create = mutation({
     timezone: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     notifyConversationId: v.optional(v.string()),
+    silent: v.optional(v.boolean()),
     nextRunAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
