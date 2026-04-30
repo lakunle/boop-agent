@@ -1,5 +1,6 @@
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
+import { channelIdOf } from "./channels/types.js";
 import type { ChannelId, ConversationId } from "./channels/types.js";
 
 const MODEL_KEY = "model";
@@ -94,8 +95,8 @@ export async function getChannelPrimary(channel: ChannelId): Promise<Conversatio
 }
 
 export async function recordChannelPrimary(conversationId: ConversationId): Promise<void> {
-  const ch = conversationId.split(":", 1)[0] as ChannelId;
-  if (ch !== "sms" && ch !== "tg") return;
+  const ch = channelIdOf(conversationId);
+  if (!ch) return;
   await convex.mutation(api.settings.set, {
     key: channelPrimaryKey(ch),
     value: conversationId,

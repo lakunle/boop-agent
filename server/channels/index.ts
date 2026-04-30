@@ -3,6 +3,7 @@ import { api } from "../../convex/_generated/api.js";
 import { convex } from "../convex-client.js";
 import { broadcast } from "../broadcast.js";
 import { handleUserMessage } from "../interaction-agent.js";
+import { recordChannelPrimary } from "../runtime-config.js";
 import type { Channel, ChannelId, ConversationId, ParsedInbound, SendOpts } from "./types.js";
 import { channelIdOf } from "./types.js";
 import { sendblueChannel } from "./sendblue.js";
@@ -71,6 +72,10 @@ export async function runTurn(inbound: ParsedInbound): Promise<void> {
   const start = Date.now();
 
   broadcast("message_in", { conversationId, content, from });
+
+  await recordChannelPrimary(conversationId).catch((err) =>
+    console.warn(`[channels] recordChannelPrimary failed`, err),
+  );
 
   const stopTyping = startTyping(conversationId);
   try {
