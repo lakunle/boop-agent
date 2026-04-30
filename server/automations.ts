@@ -2,7 +2,7 @@ import { Cron } from "croner";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { spawnExecutionAgent } from "./execution-agent.js";
-import { sendImessage } from "./sendblue.js";
+import { dispatch } from "./channels/index.js";
 import { broadcast } from "./broadcast.js";
 import { getUserTimezone } from "./timezone-config.js";
 
@@ -68,15 +68,15 @@ async function runAutomation(a: {
     });
 
     if (a.notifyConversationId && res.result) {
-      if (a.notifyConversationId.startsWith("sms:")) {
-        const number = a.notifyConversationId.slice(4);
-        const preamble = `[${a.name}]\n\n`;
-        await sendImessage(number, preamble + res.result);
-      }
+      const preamble = `[${a.name}]\n\n`;
+      await dispatch(
+        a.notifyConversationId as `sms:${string}` | `tg:${string}`,
+        preamble + res.result,
+      );
       await convex.mutation(api.messages.send, {
         conversationId: a.notifyConversationId,
         role: "assistant",
-        content: `[${a.name}]\n\n${res.result}`,
+        content: preamble + res.result,
       });
     }
 
