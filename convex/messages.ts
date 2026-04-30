@@ -55,3 +55,25 @@ export const recent = query({
     return msgs.reverse();
   },
 });
+
+export const recentAcrossChannels = query({
+  args: {
+    conversationIds: v.array(v.string()),
+    limit: v.number(),
+  },
+  handler: async (ctx, { conversationIds, limit }) => {
+    if (conversationIds.length === 0) return [];
+    const perConvo = await Promise.all(
+      conversationIds.map((cid) =>
+        ctx.db
+          .query("messages")
+          .withIndex("by_conversation", (q) => q.eq("conversationId", cid))
+          .order("desc")
+          .take(limit),
+      ),
+    );
+    const merged = perConvo.flat();
+    merged.sort((a, b) => a._creationTime - b._creationTime);
+    return merged.slice(-limit);
+  },
+});
