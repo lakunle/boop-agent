@@ -32,6 +32,7 @@ Examples:
 If you don't yet know the user's timezone (get_config returns userTimezone=null), ASK before creating any time-of-day automation — otherwise it'll fire in the server's zone, which is almost always wrong.
 
 Use this for anything the user says "every [time]" or "remind me" about.
+Notifications go to your currently-active channel by default (use set_active_channel to switch).
 Integrations available: ${integrationHint}`,
         {
           name: z.string().describe("Short label, e.g. 'morning email digest'."),
@@ -46,11 +47,6 @@ Integrations available: ${integrationHint}`,
             .describe(
               "Integration names the sub-agent needs for this task. Pass [] for reminder-only automations that don't need external tools.",
             ),
-          notify: z
-            .boolean()
-            .optional()
-            .default(true)
-            .describe("If true, send the result to this conversation when it runs."),
         },
         async (args) => {
           // Resolve the user's timezone now and store it on the automation,
@@ -80,7 +76,7 @@ Integrations available: ${integrationHint}`,
             schedule: args.schedule,
             timezone,
             conversationId,
-            notifyConversationId: args.notify ? conversationId : undefined,
+            notifyConversationId: undefined,
             nextRunAt,
           });
           const nextStr = nextRunAt
