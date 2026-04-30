@@ -4,7 +4,7 @@ import cors from "cors";
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { addClient } from "./broadcast.js";
-import { mountChannelRouters } from "./channels/index.js";
+import { mountChannelRouters, getChannelById } from "./channels/index.js";
 import { handleUserMessage } from "./interaction-agent.js";
 import { loadIntegrations } from "./integrations/registry.js";
 import { startCleanupLoop } from "./memory/clean.js";
@@ -14,6 +14,7 @@ import { startConsolidationLoop } from "./consolidation.js";
 import { cancelAgent, retryAgent } from "./execution-agent.js";
 import { createComposioRouter } from "./composio-routes.js";
 import { ensureProactiveWatcher } from "./proactive-email.js";
+import { resolveActiveChannel } from "./runtime-config.js";
 
 async function main() {
   await loadIntegrations();
@@ -47,6 +48,23 @@ async function main() {
   });
 
   mountChannelRouters(app);
+
+  // Warn if the active channel can't actually send (missing creds).
+  try {
+    const { channel } = await resolveActiveChannel();
+    const ch = getChannelById(channel);
+    if (!ch || !ch.isConfigured()) {
+      const required =
+        channel === "tg" ? "TELEGRAM_BOT_TOKEN" : "SENDBLUE_API_KEY/SENDBLUE_API_SECRET";
+      console.warn(
+        `[channels] Active channel is "${channel}" but its credentials are missing (${required}). ` +
+        `Unsolicited messages will be dropped. Set the env var or change the active channel via "use imessage" / "use telegram".`,
+      );
+    }
+  } catch (err) {
+    console.warn("[channels] active-channel readiness check failed", err);
+  }
+
   app.use("/composio", createComposioRouter());
 
   app.post("/agents/:id/cancel", (req, res) => {
