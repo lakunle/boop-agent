@@ -20,12 +20,16 @@ mkdirSync(out, { recursive: true });
 
 // 2. text-only.pdf — three pages of paragraph text
 async function htmlToPdf(html, file) {
+  // --no-sandbox required on macOS without a user namespace for Chrome
   const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
-  const page = await browser.newPage();
-  await page.setContent(html);
-  const buf = await page.pdf({ format: "A4" });
-  writeFileSync(resolve(out, file), buf);
-  await browser.close();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html);
+    const buf = await page.pdf({ format: "A4" });
+    writeFileSync(resolve(out, file), buf);
+  } finally {
+    await browser.close();
+  }
 }
 await htmlToPdf(
   `<html><body style="font:14px sans-serif;padding:40px">
