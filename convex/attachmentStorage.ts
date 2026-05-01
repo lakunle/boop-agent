@@ -31,6 +31,16 @@ export const recordUploaded = mutation({
     sizeBytes: v.number(),
   },
   handler: async (ctx, args) => {
+    if (args.sizeBytes <= 0 || !Number.isFinite(args.sizeBytes)) {
+      throw new Error(
+        `attachmentStorage.recordUploaded: sizeBytes must be a positive finite number (got ${args.sizeBytes})`,
+      );
+    }
+    if (!args.mimeType) {
+      throw new Error(
+        "attachmentStorage.recordUploaded: mimeType must not be empty",
+      );
+    }
     const signedUrl = await ctx.storage.getUrl(args.storageId);
     if (!signedUrl) {
       throw new Error(
