@@ -9,6 +9,19 @@ export default defineSchema({
     agentId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     createdAt: v.number(),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          kind: v.union(v.literal("image"), v.literal("pdf"), v.literal("doc")),
+          mimeType: v.string(),
+          sizeBytes: v.number(),
+          storageId: v.id("_storage"),
+          signedUrl: v.optional(v.string()),
+          description: v.optional(v.string()),
+          filename: v.optional(v.string()),
+        }),
+      ),
+    ),
   })
     .index("by_conversation", ["conversationId"])
     .index("by_conversation_turn", ["conversationId", "turnId"]),
