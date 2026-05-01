@@ -1,5 +1,9 @@
 const OPENAI_CHAT = "https://api.openai.com/v1/chat/completions";
 
+// Models we've already warned about — keeps log noise to one warning per
+// unknown model per process. Lives at module scope, not per-call.
+const warnedModels = new Set<string>();
+
 // Pricing as of 2026-05. gpt-4o is the default; gpt-4o-mini is supported via
 // BOOP_VISION_MODEL override. Add new entries here when adding model support.
 const PRICING: Record<string, { in: number; out: number }> = {
@@ -33,6 +37,10 @@ const SYSTEM_PROMPT =
  *
  * Throws on auth/network/HTTP errors. Caller is expected to surface a
  * user-friendly error to the channel.
+ *
+ * If BOOP_VISION_MODEL is set to a model not in PRICING, gpt-4o pricing is
+ * used as a fallback and a one-time warning is logged. Add the model to
+ * PRICING to fix cost accuracy.
  */
 export async function describeImage(
   bytes: Buffer,
@@ -88,10 +96,17 @@ export async function describeImage(
     usage?: { prompt_tokens: number; completion_tokens: number };
   };
   const description = json.choices?.[0]?.message?.content?.trim() ?? "";
-  const pricing = PRICING[model] ?? PRICING["gpt-4o"];
+  const pricing = PRICING[model];
+  if (!pricing && !warnedModels.has(model)) {
+    console.warn(
+      `[vision] BOOP_VISION_MODEL="${model}" not in PRICING table — using gpt-4o pricing for cost estimates. Add it to server/vision.ts:PRICING for accuracy.`,
+    );
+    warnedModels.add(model);
+  }
+  const effective = pricing ?? PRICING["gpt-4o"];
   const costUsd =
-    (json.usage?.prompt_tokens ?? 0) * pricing.in +
-    (json.usage?.completion_tokens ?? 0) * pricing.out;
+    (json.usage?.prompt_tokens ?? 0) * effective.in +
+    (json.usage?.completion_tokens ?? 0) * effective.out;
 
   return { description, costUsd, model };
 }
