@@ -9,6 +9,7 @@ const kindV = v.union(
   v.literal("resume"),
   v.literal("newsletter"),
   v.literal("reference"),
+  v.literal("pitch"),
 );
 
 function randomArtifactId(): string {

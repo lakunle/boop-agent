@@ -68,9 +68,22 @@ interface RenderResult {
   pageCount: number;
 }
 
-async function renderHtml(html: string): Promise<RenderResult> {
+interface PageOptions {
+  orientation?: "portrait" | "landscape";
+  margin?: {
+    top?: string;
+    right?: string;
+    bottom?: string;
+    left?: string;
+  };
+}
+
+const DEFAULT_MARGIN = { top: "20mm", right: "20mm", bottom: "20mm", left: "20mm" };
+
+async function renderHtml(html: string, pageOptions?: PageOptions): Promise<RenderResult> {
   const browser = await getBrowser();
   const page = await browser.newPage();
+  const landscape = pageOptions?.orientation === "landscape";
   try {
     // setContent — networkidle0 ensures all inlined assets settle. We hard-cap
     // total render time so a hanging external request can't lock the page.
@@ -83,16 +96,20 @@ async function renderHtml(html: string): Promise<RenderResult> {
     const pdfBuffer = await withTimeout(
       page.pdf({
         format: "A4",
+        landscape,
         printBackground: true,
-        margin: { top: "20mm", right: "20mm", bottom: "20mm", left: "20mm" },
+        margin: { ...DEFAULT_MARGIN, ...(pageOptions?.margin ?? {}) },
       }),
       RENDER_TIMEOUT_MS,
       "page.pdf",
     );
 
     // Thumbnail — re-use the same page, shrink the viewport to A4 aspect ratio
-    // at thumbnail size, then screenshot. ~150ms.
-    await page.setViewport({ width: 200, height: 283, deviceScaleFactor: 1 });
+    // at thumbnail size, then screenshot. ~150ms. Flip dims for landscape so
+    // the thumbnail preserves orientation.
+    const thumbW = landscape ? 283 : 200;
+    const thumbH = landscape ? 200 : 283;
+    await page.setViewport({ width: thumbW, height: thumbH, deviceScaleFactor: 1 });
     const thumbBuffer = await withTimeout(
       page.screenshot({ type: "png", fullPage: false }),
       5_000,
@@ -121,7 +138,21 @@ function countPages(pdfBuffer: Buffer | Uint8Array): number {
   return matches ? matches.length : 1;
 }
 
-const KIND = z.enum(["brief", "invoice", "itinerary", "resume", "newsletter", "reference"]);
+const KIND = z.enum(["brief", "invoice", "itinerary", "resume", "newsletter", "reference", "pitch"]);
+
+const PAGE_OPTIONS = z
+  .object({
+    orientation: z.enum(["portrait", "landscape"]).optional(),
+    margin: z
+      .object({
+        top: z.string().optional(),
+        right: z.string().optional(),
+        bottom: z.string().optional(),
+        left: z.string().optional(),
+      })
+      .optional(),
+  })
+  .optional();
 
 /**
  * Boop PDF MCP. Loaded on every execution agent spawn that has a
@@ -143,17 +174,19 @@ export function createPdfMcp(conversationId: string, agentId?: string) {
 Input expectations:
 - html: a complete HTML document with all CSS inlined in a <style> block. Do NOT reference external stylesheets, fonts, or images — Puppeteer renders offline. Use system fonts and inline SVGs.
 - filename: the user-facing filename, e.g. "invoice-acme-2026-04-29.pdf".
-- kind: one of brief | invoice | itinerary | resume | newsletter | reference.
+- kind: one of brief | invoice | itinerary | resume | newsletter | reference | pitch.
+- pageOptions (optional): override the page geometry. Defaults to A4 portrait with 20mm margins on all sides — used by every kind except pitch. For pitch decks pass { orientation: "landscape", margin: { top: "0", right: "0", bottom: "0", left: "0" } } so each slide can paint full-bleed and fill the whole page. Margin values are CSS lengths ("0", "12mm", "0.5in").
 
 The interaction agent will attach the resulting PDF to the user's iMessage automatically. Do NOT paste the URL in your response — just say what you produced ("Generated INV-2026-0042 — $4,200 to Acme.").`,
         {
           html: z.string(),
           filename: z.string(),
           kind: KIND,
+          pageOptions: PAGE_OPTIONS,
         },
         async (args) => {
           try {
-            const { pdfBase64, thumbnailBase64, pageCount } = await renderHtml(args.html);
+            const { pdfBase64, thumbnailBase64, pageCount } = await renderHtml(args.html, args.pageOptions);
             const result = await convex.action(api.pdfArtifacts.generate, {
               pdfBase64,
               thumbnailBase64,

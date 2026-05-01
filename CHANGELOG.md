@@ -8,6 +8,15 @@ Format:
 
 ---
 
+## Unreleased — pdf-pitch skill + landscape/full-bleed renderer
+
+- Added: `pdf-pitch` skill (`.claude/skills/pdf-pitch/SKILL.md`) for landscape, slide-per-page presentation PDFs — pitch decks, investor briefs, fundraising decks, sales decks. Each `<section class="slide">` is sized exactly 297mm × 210mm with `break-after: page; break-inside: avoid; overflow: hidden`, so content can't bleed across pages. Cover slide paints full-bleed.
+- Added: `pageOptions` arg on the `mcp__boop-pdf__generate_pdf` tool — `{ orientation?: "portrait" | "landscape", margin?: { top?, right?, bottom?, left? } }`. Defaults preserve current behavior (A4 portrait, 20mm margin) for the existing six skills. `pdf-pitch` passes `orientation: "landscape"` and `margin: 0` so the cover background can reach the page edges.
+- Added: `"pitch"` literal to the `kind` enum in `server/pdf-tools.ts`, the `kindV` validator in `convex/pdfArtifacts.ts`, and the `pdfArtifacts` schema column in `convex/schema.ts`. This is a widening of the union; existing rows continue to validate.
+- Changed: `pdf-brief` description tightened — explicitly DOES NOT trigger on pitch / deck / investor / fundraising / co-founder briefs. Those route to `pdf-pitch`. Daily/morning/meeting/research briefs still route to `pdf-brief`.
+- Changed: thumbnail viewport is now landscape-aware (283×200 for landscape, 200×283 for portrait) so the artifact preview matches orientation.
+- Updated: `docs/superpowers/specs/pdf-skills-trigger-checklist.md` with `pdf-pitch` rows and negative-case rows on `pdf-brief` ("investor brief" should NOT fire pdf-brief).
+
 ## Unreleased — Telegram channel
 
 - Added: `server/channels/` — channel-abstraction layer with a `Channel` interface (types, registry, dispatch, runTurn). Both Sendblue and Telegram register through this. The runTurn function is the shared inbound turn runner extracted from the Sendblue webhook.

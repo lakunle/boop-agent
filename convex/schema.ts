@@ -248,6 +248,7 @@ export default defineSchema({
       v.literal("resume"),
       v.literal("newsletter"),
       v.literal("reference"),
+      v.literal("pitch"),
     ),
     filename: v.string(),
     storageId: v.id("_storage"),

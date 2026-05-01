@@ -1,6 +1,6 @@
 ---
 name: pdf-brief
-description: Generate a beautifully designed brief, recap, or summary as a PDF. Use when the user asks for a daily brief, morning brief, weekly summary, meeting prep, research summary, or "make me a brief on X". Always renders through boop-design for typography, color, and layout discipline.
+description: Generate a beautifully designed brief, recap, or summary as a 1–3 page portrait PDF. Use ONLY for short personal/work briefings — daily brief, morning brief, weekly summary, meeting prep, research summary, or "make me a brief on X". DO NOT use for pitch decks, investor briefs, fundraising decks, slide decks, presentations, or anything multi-section/landscape — use pdf-pitch instead. Always renders through boop-design for typography, color, and layout discipline.
 ---
 
 # pdf-brief

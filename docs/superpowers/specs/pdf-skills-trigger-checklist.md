@@ -18,6 +18,19 @@ For each row: text the prompt, watch the server logs for the expected `[agent ..
 - [ ] "Meeting prep PDF for the 11:30 with Acme" → fires
 - [ ] "Weekly review PDF" → fires
 - [ ] "Schedule for Monday" → does NOT fire (this is a calendar lookup, no PDF)
+- [ ] "Investor brief PDF for Mise.AI" → does NOT fire (use pdf-pitch instead)
+- [ ] "Co-founder brief / pitch deck" → does NOT fire (use pdf-pitch instead)
+
+## pdf-pitch
+
+- [ ] "Make me a pitch deck for Mise.AI" → fires
+- [ ] "Investor brief PDF — 10 slides" → fires
+- [ ] "Co-founder brief deck" → fires
+- [ ] "Slide deck about our pricing change" → fires
+- [ ] "Fundraising deck for the seed round" → fires
+- [ ] "Sales deck for Acme" → fires
+- [ ] "Morning brief PDF" → does NOT fire (use pdf-brief instead)
+- [ ] Visually verify: each slide is one landscape page, the cover background is full-bleed (no white margin around it), and no slide overflows / clips the next page.
 
 ## pdf-itinerary
 
