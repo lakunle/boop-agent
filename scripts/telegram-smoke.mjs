@@ -169,6 +169,126 @@ console.log("[smoke] 4. voice message inbound");
   }
 }
 
+// ---- Inbound photo (opt-in) ----
+const smokePhotoFileId = env.TELEGRAM_SMOKE_PHOTO_FILE_ID;
+if (smokePhotoFileId) {
+  console.log("[smoke] 5. photo inbound");
+  {
+    const updateId = nextUpdateId();
+    const r = await postUpdate({
+      update_id: updateId,
+      message: {
+        message_id: updateId,
+        from: { id: chatId, username: "smoke", first_name: "Smoke" },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        photo: [
+          { file_id: smokePhotoFileId, file_size: 50000, width: 64, height: 64 },
+        ],
+        caption: "vibe for the deck",
+      },
+    });
+    if (r.status === 200 && r.body?.ok) ok("photo webhook accepted");
+    else fail("photo webhook returned non-ok", r);
+
+    // Wait for runTurn → resolveAttachment → upload + describe + persist.
+    // Vision call typically takes 2–5 seconds; allow generous slack.
+    await new Promise((r) => setTimeout(r, 8000));
+    const msgs = await convex.query(api.messages.recent, {
+      conversationId: `tg:${chatId}`,
+      limit: 5,
+    });
+    const userMsg = msgs.reverse().find(
+      (m) => m.role === "user" && m.content.includes("(image attached)"),
+    );
+    if (userMsg) ok("user message row contains image-attachment block");
+    else fail("expected image-attachment block in recent user messages");
+  }
+} else {
+  console.log("[smoke] 5. photo inbound — SKIPPED (set TELEGRAM_SMOKE_PHOTO_FILE_ID to enable)");
+}
+
+// ---- Inbound document/PDF (opt-in) ----
+const smokePdfFileId = env.TELEGRAM_SMOKE_PDF_FILE_ID;
+if (smokePdfFileId) {
+  console.log("[smoke] 6. document (PDF) inbound");
+  {
+    const updateId = nextUpdateId();
+    const r = await postUpdate({
+      update_id: updateId,
+      message: {
+        message_id: updateId,
+        from: { id: chatId, username: "smoke", first_name: "Smoke" },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        document: {
+          file_id: smokePdfFileId,
+          mime_type: "application/pdf",
+          file_name: "smoke.pdf",
+          file_size: 50000,
+        },
+        caption: "smoke test pdf",
+      },
+    });
+    if (r.status === 200 && r.body?.ok) ok("pdf webhook accepted");
+    else fail("pdf webhook returned non-ok", r);
+
+    // PDFs: pdfjs parse + per-page text extraction is fast for small files.
+    await new Promise((r) => setTimeout(r, 10000));
+    const msgs = await convex.query(api.messages.recent, {
+      conversationId: `tg:${chatId}`,
+      limit: 5,
+    });
+    const userMsg = msgs.reverse().find(
+      (m) => m.role === "user" && m.content.includes("(PDF attached"),
+    );
+    if (userMsg) ok("user message row contains pdf-attachment block");
+    else fail("expected pdf-attachment block in recent user messages");
+  }
+} else {
+  console.log("[smoke] 6. document (PDF) inbound — SKIPPED (set TELEGRAM_SMOKE_PDF_FILE_ID to enable)");
+}
+
+// ---- Unsupported media (sticker) → polite reject (always runs) ----
+console.log("[smoke] 7. unsupported media (sticker) → polite reject");
+{
+  const updateId = nextUpdateId();
+  const r = await postUpdate({
+    update_id: updateId,
+    message: {
+      message_id: updateId,
+      from: { id: chatId, username: "smoke", first_name: "Smoke" },
+      chat: { id: chatId, type: "private" },
+      date: Math.floor(Date.now() / 1000),
+      sticker: {
+        file_id: "fake-sticker-id",
+        width: 512,
+        height: 512,
+        is_animated: false,
+        is_video: false,
+      },
+    },
+  });
+  if (r.status === 200 && r.body?.ok) ok("sticker webhook accepted");
+  else fail("sticker webhook returned non-ok", r);
+
+  // The polite reply is sent via dispatch() but is NOT persisted as a user
+  // OR assistant message row (dispatch is fire-and-forget for unsolicited
+  // pushes; only runTurn persists the assistant message). Verify by checking
+  // that NO user-message row appears for this update_id. The sticker file_id
+  // is fake, so even an accidental download attempt would fail loudly.
+  await new Promise((r) => setTimeout(r, 2000));
+  const msgs = await convex.query(api.messages.recent, {
+    conversationId: `tg:${chatId}`,
+    limit: 3,
+  });
+  const stickerMsg = msgs.find(
+    (m) => m.role === "user" && (m.content.includes("sticker") || m.content.includes("fake-sticker-id")),
+  );
+  if (!stickerMsg) ok("no user-message row for unsupported sticker (correct)");
+  else fail("sticker should not produce a user-message row", { content: stickerMsg.content });
+}
+
 if (process.exitCode === 1) {
   console.error("[smoke] FAILED");
   process.exit(1);
