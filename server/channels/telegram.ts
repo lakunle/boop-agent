@@ -10,8 +10,11 @@ import {
   resolveAttachment,
   isAttachmentError,
   ATTACHMENT_LIMITS,
-  type ResolvedAttachment,
 } from "../attachments.js";
+import {
+  formatAttachmentBlock,
+  recordAttachmentUsage,
+} from "./attachment-helpers.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const MAX_TG_CHUNK = 4000; // 4096 hard cap with margin
@@ -148,31 +151,6 @@ async function resolveVoiceContent(
   }
 }
 
-function formatAttachmentBlock(
-  resolved: ResolvedAttachment,
-  index: number | null,
-  total: number,
-  caption: string | undefined,
-): string {
-  const emoji = resolved.kind === "image" ? "🖼️" : resolved.kind === "pdf" ? "📄" : "📎";
-  const label =
-    resolved.kind === "image"
-      ? "image"
-      : resolved.kind === "pdf"
-        ? "PDF"
-        : "file";
-  const counter = index !== null && total > 1 ? ` ${index + 1}/${total}` : "";
-  return [
-    `${emoji} (${label} attached${counter})`,
-    caption ? `Caption: ${caption}` : null,
-    resolved.filename ? `Filename: ${resolved.filename}` : null,
-    `Description: ${resolved.description}`,
-    `Link: ${resolved.signedUrl}`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
 function pickPhoto(
   photos: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>,
   maxBytes: number,
@@ -184,35 +162,6 @@ function pickPhoto(
     if (!p.file_size || p.file_size <= maxBytes) return p;
   }
   return null;
-}
-
-async function recordAttachmentUsage(
-  resolved: ResolvedAttachment,
-  conversationId: ConversationId,
-): Promise<void> {
-  const source =
-    resolved.kind === "image"
-      ? "vision"
-      : resolved.kind === "pdf"
-        ? "pdf-extract"
-        : "docx-extract";
-  await convex
-    .mutation(api.usageRecords.record, {
-      source,
-      conversationId,
-      // Prefer the model surfaced by the resolver (e.g. "gpt-4o" or
-      // "BOOP_VISION_MODEL" override for vision; "pdfjs", "pdfjs+vision",
-      // "mammoth" for extractors). Fall back to the source name for raw
-      // text reads where no specific tool was used.
-      model: resolved.model ?? source,
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      costUsd: resolved.costUsd,
-      durationMs: 0,
-    })
-    .catch((err) => console.warn("[telegram] attachment usage record failed", err));
 }
 
 async function resolveTelegramPhoto(
@@ -251,7 +200,7 @@ async function resolveTelegramPhoto(
     return null;
   }
 
-  await recordAttachmentUsage(resolved, conversationId);
+  await recordAttachmentUsage(resolved, conversationId, "telegram");
 
   return formatAttachmentBlock(resolved, null, 1, caption);
 }
@@ -296,7 +245,7 @@ async function resolveTelegramDocument(
     return null;
   }
 
-  await recordAttachmentUsage(resolved, conversationId);
+  await recordAttachmentUsage(resolved, conversationId, "telegram");
 
   return formatAttachmentBlock(resolved, null, 1, caption);
 }

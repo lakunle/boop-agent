@@ -2,6 +2,8 @@ import express from "express";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { runTurn } from "./channels/index.js";
+import { resolveAttachment, isAttachmentError } from "./attachments.js";
+import { formatAttachmentBlock, recordAttachmentUsage } from "./channels/attachment-helpers.js";
 
 const API_BASE = "https://api.sendblue.com/api";
 const MAX_CHUNK = 2900;
@@ -157,8 +159,29 @@ export function createSendblueRouter(): express.Router {
   const router = express.Router();
 
   router.post("/webhook", async (req, res) => {
-    const { content, from_number, is_outbound, message_handle } = req.body ?? {};
-    if (is_outbound || !content || !from_number) {
+    const {
+      content,
+      from_number,
+      is_outbound,
+      message_handle,
+      media_url,
+      media_urls,
+    } = req.body ?? {};
+    if (is_outbound || !from_number) {
+      res.json({ ok: true, skipped: true });
+      return;
+    }
+
+    // Normalize media into an array. Sendblue may send a single `media_url`
+    // string OR a `media_urls` array — handle both shapes.
+    const mediaUrls: string[] = Array.isArray(media_urls)
+      ? media_urls.filter((u): u is string => typeof u === "string" && u.length > 0)
+      : typeof media_url === "string" && media_url.length > 0
+        ? [media_url]
+        : [];
+
+    // Skip messages with neither text content nor media.
+    if (!content && mediaUrls.length === 0) {
       res.json({ ok: true, skipped: true });
       return;
     }
@@ -173,11 +196,64 @@ export function createSendblueRouter(): express.Router {
       }
     }
 
+    // Acknowledge the webhook BEFORE doing the slow work — Sendblue's webhook
+    // timeout is similar to Telegram's. Keeps inbound flowing during a long
+    // vision call.
     res.json({ ok: true });
 
+    const conversationId = `sms:${from_number}` as `sms:${string}`;
+    let body = content ?? "";
+
+    if (mediaUrls.length > 0) {
+      const blocks: string[] = [];
+      for (let i = 0; i < mediaUrls.length; i++) {
+        const url = mediaUrls[i];
+        try {
+          const r = await fetch(url);
+          if (!r.ok) {
+            console.error(`[sendblue] media ${i + 1}/${mediaUrls.length} fetch failed: HTTP ${r.status}`);
+            blocks.push(`⚠️ (file ${i + 1}/${mediaUrls.length}: couldn't download — HTTP ${r.status})`);
+            continue;
+          }
+          const mime =
+            r.headers.get("content-type")?.split(";")[0]?.trim() ?? "application/octet-stream";
+          const bytes = Buffer.from(await r.arrayBuffer());
+          const filename = url.split("/").pop()?.split("?")[0];
+          const resolved = await resolveAttachment(bytes, mime, filename, "sendblue");
+          if (isAttachmentError(resolved)) {
+            console.error(
+              `[sendblue] resolveAttachment ${i + 1}/${mediaUrls.length} error`,
+              resolved.serverError,
+            );
+            blocks.push(`⚠️ (file ${i + 1}/${mediaUrls.length}: ${resolved.userMessage})`);
+          } else {
+            await recordAttachmentUsage(resolved, conversationId, "sendblue");
+            // For multi-attachment messages, pass index/total to format the counter;
+            // for single attachments, pass null index so the counter is omitted.
+            const idx = mediaUrls.length > 1 ? i : null;
+            // Caption (the user's accompanying text) only goes with the FIRST block;
+            // subsequent blocks just get their own header without re-attaching it.
+            const caption = i === 0 ? content : undefined;
+            blocks.push(formatAttachmentBlock(resolved, idx, mediaUrls.length, caption));
+          }
+        } catch (e) {
+          console.error(`[sendblue] media fetch ${i + 1}/${mediaUrls.length} failed`, e);
+          blocks.push(`⚠️ (file ${i + 1}/${mediaUrls.length}: couldn't fetch the attachment)`);
+        }
+      }
+
+      body = blocks.join("\n\n");
+    }
+
+    if (!body) {
+      // Every attempt failed AND there was no caption — at least nudge the user.
+      await sendImessage(from_number, "Couldn't read your attachment — try resending it?");
+      return;
+    }
+
     await runTurn({
-      conversationId: `sms:${from_number}` as `sms:${string}`,
-      content,
+      conversationId,
+      content: body,
       from: from_number,
     });
   });
