@@ -1,20 +1,10 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-
-const sourceV = v.union(
-  v.literal("dispatcher"),
-  v.literal("execution"),
-  v.literal("extract"),
-  v.literal("consolidation-proposer"),
-  v.literal("consolidation-adversary"),
-  v.literal("consolidation-judge"),
-  v.literal("proactive"),
-  v.literal("transcribe"),
-);
+import { usageSourceValidator } from "./validators";
 
 export const record = mutation({
   args: {
-    source: sourceV,
+    source: usageSourceValidator,
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     agentId: v.optional(v.string()),
