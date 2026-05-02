@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { attachmentsFieldValidator } from "./validators";
 
 export const send = mutation({
   args: {
@@ -8,8 +9,12 @@ export const send = mutation({
     content: v.string(),
     agentId: v.optional(v.string()),
     turnId: v.optional(v.string()),
+    attachments: attachmentsFieldValidator,
   },
   handler: async (ctx, args) => {
+    // NOTE: args must mirror the messages schema shape (minus createdAt).
+    // The shared `attachmentsFieldValidator` (convex/validators.ts) keeps
+    // schema and args in lockstep — extend it there to add fields.
     const now = Date.now();
     const id = await ctx.db.insert("messages", { ...args, createdAt: now });
 

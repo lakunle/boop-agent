@@ -6,6 +6,16 @@ import { api } from "../../convex/_generated/api.js";
 import { convex } from "../convex-client.js";
 import { runTurn, dispatch } from "./index.js";
 import { transcribeAudio } from "../transcribe.js";
+import {
+  resolveAttachment,
+  isAttachmentError,
+  ATTACHMENT_LIMITS,
+} from "../attachments.js";
+import {
+  formatAttachmentBlock,
+  recordAttachmentUsage,
+  toPersistedAttachment,
+} from "./attachment-helpers.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const MAX_TG_CHUNK = 4000; // 4096 hard cap with margin
@@ -142,6 +152,111 @@ async function resolveVoiceContent(
   }
 }
 
+function pickPhoto(
+  photos: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>,
+  maxBytes: number,
+): { file_id: string; file_size?: number } | null {
+  const sorted = [...photos].sort(
+    (a, b) => (b.file_size ?? 0) - (a.file_size ?? 0),
+  );
+  for (const p of sorted) {
+    if (!p.file_size || p.file_size <= maxBytes) return p;
+  }
+  return null;
+}
+
+async function resolveTelegramPhoto(
+  photos: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>,
+  caption: string | undefined,
+  chatId: number,
+): Promise<{ body: string; attachments: ReturnType<typeof toPersistedAttachment>[] } | null> {
+  const conversationId = `tg:${chatId}` as ConversationId;
+  const pick = pickPhoto(photos, ATTACHMENT_LIMITS.maxImageBytes);
+  if (!pick) {
+    await dispatch(
+      conversationId,
+      `That photo is bigger than ${(ATTACHMENT_LIMITS.maxImageBytes / 1024 / 1024).toFixed(0)} MB — try sending a smaller one?`,
+    );
+    return null;
+  }
+
+  let downloaded;
+  try {
+    downloaded = await downloadTelegramFile(pick.file_id);
+  } catch (e) {
+    console.error("[telegram] photo download failed", e);
+    await dispatch(conversationId, "Couldn't fetch that photo — try sending it again?");
+    return null;
+  }
+
+  const resolved = await resolveAttachment(
+    downloaded.bytes,
+    downloaded.mime,
+    `photo-${pick.file_id}.jpg`,
+    "telegram",
+  );
+  if (isAttachmentError(resolved)) {
+    console.error("[telegram] photo resolveAttachment error", resolved.serverError);
+    await dispatch(conversationId, resolved.userMessage);
+    return null;
+  }
+
+  await recordAttachmentUsage(resolved, conversationId, "telegram");
+
+  return {
+    body: formatAttachmentBlock(resolved, null, 1, caption),
+    attachments: [toPersistedAttachment(resolved)],
+  };
+}
+
+async function resolveTelegramDocument(
+  doc: { file_id: string; mime_type?: string; file_name?: string; file_size?: number },
+  caption: string | undefined,
+  chatId: number,
+): Promise<{ body: string; attachments: ReturnType<typeof toPersistedAttachment>[] } | null> {
+  const conversationId = `tg:${chatId}` as ConversationId;
+  const declaredMime = doc.mime_type ?? "application/octet-stream";
+  const cap =
+    declaredMime === "application/pdf"
+      ? ATTACHMENT_LIMITS.maxPdfBytes
+      : ATTACHMENT_LIMITS.maxTextBytes;
+  if (doc.file_size && doc.file_size > cap) {
+    await dispatch(
+      conversationId,
+      `That file is ${(doc.file_size / 1024 / 1024).toFixed(1)} MB — bigger than I can handle (${(cap / 1024 / 1024).toFixed(0)} MB).`,
+    );
+    return null;
+  }
+
+  let downloaded;
+  try {
+    downloaded = await downloadTelegramFile(doc.file_id);
+  } catch (e) {
+    console.error("[telegram] document download failed", e);
+    await dispatch(conversationId, "Couldn't fetch that file — try sending it again?");
+    return null;
+  }
+
+  const resolved = await resolveAttachment(
+    downloaded.bytes,
+    declaredMime,
+    doc.file_name,
+    "telegram",
+  );
+  if (isAttachmentError(resolved)) {
+    console.error("[telegram] document resolveAttachment error", resolved.serverError);
+    await dispatch(conversationId, resolved.userMessage);
+    return null;
+  }
+
+  await recordAttachmentUsage(resolved, conversationId, "telegram");
+
+  return {
+    body: formatAttachmentBlock(resolved, null, 1, caption),
+    attachments: [toPersistedAttachment(resolved)],
+  };
+}
+
 export const telegramChannel: Channel = {
   id: "tg" as ChannelId,
   label: "Telegram",
@@ -254,8 +369,9 @@ export const telegramChannel: Channel = {
         return;
       }
 
-      // 5. Resolve content (text or transcribed voice)
+      // 5. Resolve content (text, voice, photo, document, or unsupported media)
       let content: string | null = null;
+      let attachments: ReturnType<typeof toPersistedAttachment>[] | undefined;
       if (msg.voice) {
         // Ack early — transcription can take a few seconds and Telegram retries on slow responses.
         res.json({ ok: true });
@@ -264,6 +380,29 @@ export const telegramChannel: Channel = {
       } else if (typeof msg.text === "string" && msg.text.length > 0) {
         res.json({ ok: true });
         content = msg.text;
+      } else if (Array.isArray(msg.photo) && msg.photo.length > 0) {
+        res.json({ ok: true });
+        const result = await resolveTelegramPhoto(msg.photo, msg.caption, chatId);
+        if (!result) return;
+        content = result.body;
+        attachments = result.attachments;
+      } else if (msg.document) {
+        res.json({ ok: true });
+        const result = await resolveTelegramDocument(msg.document, msg.caption, chatId);
+        if (!result) return;
+        content = result.body;
+        attachments = result.attachments;
+      } else if (msg.sticker || msg.video || msg.animation || msg.video_note) {
+        res.json({ ok: true });
+        const what =
+          msg.sticker ? "stickers" :
+          msg.video || msg.video_note ? "videos" :
+          "GIFs";
+        await dispatch(
+          `tg:${chatId}` as ConversationId,
+          `I can't read ${what} yet — only photos, PDFs, .txt/.md/.docx, voice notes, and text. Try sending it differently?`,
+        );
+        return;
       } else {
         res.json({ ok: true, skipped: true });
         return;
@@ -274,6 +413,7 @@ export const telegramChannel: Channel = {
         conversationId: `tg:${chatId}` as ConversationId,
         content,
         from: `tg:${msg.from?.username ? "@" + msg.from.username : chatId}`,
+        attachments,
       });
     });
 

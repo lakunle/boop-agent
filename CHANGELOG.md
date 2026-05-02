@@ -8,6 +8,34 @@ Format:
 
 ---
 
+## Unreleased — Inbound file attachments
+
+- Added: **Telegram and iMessage (Sendblue) now accept inbound photos**
+  (JPG/PNG/HEIC/WEBP/GIF), **PDFs**, and **plain-text documents**
+  (.txt/.md/.docx). Files are described via OpenAI gpt-4o vision-to-text
+  (PDFs use selective per-page rendering — text-heavy pages skip vision)
+  and stored in Convex storage. The description and signed URL are embedded
+  in the user-message body so sub-agents (like `pdf-pitch`) can re-fetch
+  and re-analyze with their own visual depth.
+- Added: **Convex storage usage** — this feature uses Convex storage for the
+  first time outside of the existing PDF artifact pipeline. Files persist
+  until explicitly deleted; an auto-cleanup policy is a planned follow-up.
+- Added: **New env vars** (both optional): `BOOP_VISION_MODEL` (default
+  `gpt-4o`) and `BOOP_VISION_COST_CAP_USD` (default `1.50`). Cost cap stops
+  processing mid-PDF if accumulated vision cost would exceed it.
+- Changed: **Schema** — `messages.attachments?` field added (additive —
+  existing rows unaffected). `usageRecords.source` extended with three new
+  literals: `"vision"`, `"pdf-extract"`, `"docx-extract"`.
+- Changed: **Channels** — previously-silent drops on Telegram for stickers,
+  videos, GIFs, and video notes now produce a polite "not supported yet"
+  reply. This was the original root-cause bug that motivated the feature.
+- Added: Configurable limits — 20 MB per image, 20 MB per PDF, 200 KB per
+  text doc, 20 pages per PDF, $1.50 cost cap per message. All in
+  `server/attachments.ts:ATTACHMENT_LIMITS`.
+
+For configuration, see `.env.example` (BOOP_VISION_MODEL, BOOP_VISION_COST_CAP_USD).
+For design rationale, see `docs/superpowers/specs/2026-05-01-inbound-attachments-design.md`.
+
 ## Unreleased — pdf-pitch skill + landscape/full-bleed renderer
 
 - Added: `pdf-pitch` skill (`.claude/skills/pdf-pitch/SKILL.md`) for landscape, slide-per-page presentation PDFs — pitch decks, investor briefs, fundraising decks, sales decks. Each `<section class="slide">` is sized exactly 297mm × 210mm with `break-after: page; break-inside: avoid; overflow: hidden`, so content can't bleed across pages. Cover slide paints full-bleed.
