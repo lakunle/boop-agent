@@ -218,7 +218,8 @@ export function createSendblueRouter(): express.Router {
           const mime =
             r.headers.get("content-type")?.split(";")[0]?.trim() ?? "application/octet-stream";
           const bytes = Buffer.from(await r.arrayBuffer());
-          const filename = url.split("/").pop()?.split("?")[0];
+          const rawFilename = url.split("/").pop()?.split("?")[0];
+          const filename = rawFilename || undefined;
           const resolved = await resolveAttachment(bytes, mime, filename, "sendblue");
           if (isAttachmentError(resolved)) {
             console.error(
@@ -228,13 +229,10 @@ export function createSendblueRouter(): express.Router {
             blocks.push(`⚠️ (file ${i + 1}/${mediaUrls.length}: ${resolved.userMessage})`);
           } else {
             await recordAttachmentUsage(resolved, conversationId, "sendblue");
-            // For multi-attachment messages, pass index/total to format the counter;
-            // for single attachments, pass null index so the counter is omitted.
             const idx = mediaUrls.length > 1 ? i : null;
-            // Caption (the user's accompanying text) only goes with the FIRST block;
-            // subsequent blocks just get their own header without re-attaching it.
-            const caption = i === 0 ? content : undefined;
-            blocks.push(formatAttachmentBlock(resolved, idx, mediaUrls.length, caption));
+            // Caption is appended once after all blocks (see below) so it is
+            // never lost when an attachment fails. We pass undefined here.
+            blocks.push(formatAttachmentBlock(resolved, idx, mediaUrls.length, undefined));
           }
         } catch (e) {
           console.error(`[sendblue] media fetch ${i + 1}/${mediaUrls.length} failed`, e);
@@ -242,7 +240,12 @@ export function createSendblueRouter(): express.Router {
         }
       }
 
-      body = blocks.join("\n\n");
+      // Always append the user's caption (if any) once at the end, so it
+      // survives even when the first attachment failed and degenerated into
+      // a ⚠️ warning string that doesn't carry a caption slot.
+      body = content
+        ? `${blocks.join("\n\n")}\n\nCaption: ${content}`
+        : blocks.join("\n\n");
     }
 
     if (!body) {
