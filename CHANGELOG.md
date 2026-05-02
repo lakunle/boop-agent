@@ -29,10 +29,12 @@ Format:
 - Changed: **Channels** — previously-silent drops on Telegram for stickers,
   videos, GIFs, and video notes now produce a polite "not supported yet"
   reply. This was the original root-cause bug that motivated the feature.
-- Limits: 20 MB per image, 20 MB per PDF, 200 KB per text doc, 20 pages per
-  PDF, $1.50 cost cap per message. Configurable in `server/attachments.ts`.
+- Added: Configurable limits — 20 MB per image, 20 MB per PDF, 200 KB per
+  text doc, 20 pages per PDF, $1.50 cost cap per message. All in
+  `server/attachments.ts:ATTACHMENT_LIMITS`.
 
-For setup steps, see `docs/superpowers/specs/2026-05-01-inbound-attachments-design.md`.
+For configuration, see `.env.example` (BOOP_VISION_MODEL, BOOP_VISION_COST_CAP_USD).
+For design rationale, see `docs/superpowers/specs/2026-05-01-inbound-attachments-design.md`.
 
 ## Unreleased — pdf-pitch skill + landscape/full-bleed renderer
 
