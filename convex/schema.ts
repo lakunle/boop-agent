@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { attachmentsFieldValidator } from "./validators";
+import { attachmentsFieldValidator, usageSourceValidator } from "./validators";
 
 export default defineSchema({
   messages: defineTable({
@@ -92,16 +92,7 @@ export default defineSchema({
   // extract, consolidation) writes a row here so you can query total cost
   // by source, conversation, or time range.
   usageRecords: defineTable({
-    source: v.union(
-      v.literal("dispatcher"),
-      v.literal("execution"),
-      v.literal("extract"),
-      v.literal("consolidation-proposer"),
-      v.literal("consolidation-adversary"),
-      v.literal("consolidation-judge"),
-      v.literal("proactive"),
-      v.literal("transcribe"),
-    ),
+    source: usageSourceValidator,
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
     agentId: v.optional(v.string()),

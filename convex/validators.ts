@@ -7,6 +7,23 @@
 
 import { v } from "convex/values";
 
+// All valid values for usageRecords.source. Add new literals here when a new
+// model-calling module is introduced. Referenced from convex/schema.ts.
+export const usageSourceValidator = v.union(
+  v.literal("dispatcher"),
+  v.literal("execution"),
+  v.literal("extract"),
+  v.literal("consolidation-proposer"),
+  v.literal("consolidation-adversary"),
+  v.literal("consolidation-judge"),
+  v.literal("proactive"),
+  v.literal("transcribe"),
+  // inbound-attachment extractors (Task 10)
+  v.literal("vision"),
+  v.literal("pdf-extract"),
+  v.literal("docx-extract"),
+);
+
 export const attachmentElementValidator = v.object({
   kind: v.union(v.literal("image"), v.literal("pdf"), v.literal("doc")),
   mimeType: v.string(),
