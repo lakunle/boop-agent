@@ -37,13 +37,17 @@ export async function extractDocx(bytes: Buffer): Promise<DocxExtractResult> {
     };
   }
 
-  // Truncate by character count to roughly half the byte limit (utf8 worst case
-  // is 4 bytes per char), then add a marker. This is conservative — real docx
-  // text is typically 1–2 bytes/char so we'll usually stop well below the cap.
+  // Truncate by character count. Dividing by 2 keeps us at-or-below the byte
+  // cap for text up to 2 bytes/char (Latin Extended) — real .docx text is
+  // typically 1-byte ASCII so we usually stop well below. For CJK-heavy or
+  // emoji-heavy documents the truncated text may slightly exceed
+  // MAX_DOCX_TEXT_BYTES; the marker below uses the original byte count so
+  // the user-facing message is always accurate.
   const truncatedText = raw.value.slice(0, Math.floor(MAX_DOCX_TEXT_BYTES / 2));
   const totalKb = Math.round(fullBytes / 1024);
+  const capKb = Math.round(MAX_DOCX_TEXT_BYTES / 1024);
   return {
-    text: `${truncatedText}\n\n[truncated — first 200 KB of ${totalKb} KB]`,
+    text: `${truncatedText}\n\n[truncated — first ${capKb} KB of ${totalKb} KB]`,
     costUsd: 0,
     truncated: true,
     totalBytes: fullBytes,
