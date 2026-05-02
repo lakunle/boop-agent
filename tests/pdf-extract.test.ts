@@ -1,9 +1,10 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import {
   extractPdf,
   __setVisionForTesting,
+  __resetVisionForTesting,
   MAX_PDF_PAGES,
 } from "../server/pdf-extract.js";
 
@@ -82,4 +83,8 @@ test("MAX_PDF_PAGES is exported and equals 20", () => {
 test("corrupt PDF: throws a recognizable error", async () => {
   const bytes = readFileSync("tests/fixtures/corrupt.pdf");
   await assert.rejects(extractPdf(bytes, 1.5), /pdf|invalid|parse/i);
+});
+
+after(() => {
+  __resetVisionForTesting();
 });

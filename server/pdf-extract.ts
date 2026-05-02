@@ -34,6 +34,10 @@ export function __setVisionForTesting(fn: VisionFn): void {
   visionImpl = fn;
 }
 
+export function __resetVisionForTesting(): void {
+  visionImpl = describeImage;
+}
+
 async function renderPageToPng(page: any): Promise<Buffer> {
   const viewport = page.getViewport({ scale: 2 });
   const canvas = createCanvas(viewport.width, viewport.height);
@@ -56,11 +60,16 @@ export async function extractPdf(
   bytes: Buffer,
   costCapUsd: number,
 ): Promise<PdfExtractResult> {
+  // `disableWorker` is not in pdfjs-dist's DocumentInitParameters type but is
+  // accepted at runtime. We localise the cast to just this options object and
+  // use `satisfies` to keep the other properties type-checked.
+  type PdfjsNodeOptions = Extract<Parameters<typeof getDocument>[0], object> & {
+    disableWorker?: boolean;
+  };
+
   let doc;
   try {
-    // Cast to `any` to pass node-specific flags (`disableWorker`) that are not
-    // in pdfjs-dist's TypeScript type declarations but are honoured at runtime.
-    doc = await getDocument({
+    const opts = {
       data: new Uint8Array(bytes),
       // Node-required flags: no web worker, no font fetching, no eval.
       disableWorker: true,
@@ -68,7 +77,8 @@ export async function extractPdf(
       isEvalSupported: false,
       useSystemFonts: false,
       verbosity: 0,
-    } as any).promise;
+    } satisfies PdfjsNodeOptions;
+    doc = await getDocument(opts as Parameters<typeof getDocument>[0]).promise;
   } catch (err) {
     throw new Error(`pdf parse failed: ${(err as Error).message}`);
   }
@@ -84,7 +94,7 @@ export async function extractPdf(
     const page = await doc.getPage(n);
     const tc = await page.getTextContent();
     const text = tc.items
-      .map((it: any) => it.str ?? "")
+      .map((it) => ("str" in it ? (it.str ?? "") : ""))
       .join(" ")
       .trim();
 
