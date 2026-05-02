@@ -175,6 +175,7 @@ if (smokePhotoFileId) {
   console.log("[smoke] 5. photo inbound");
   {
     const updateId = nextUpdateId();
+    const testStart = Date.now();
     const r = await postUpdate({
       update_id: updateId,
       message: {
@@ -198,8 +199,12 @@ if (smokePhotoFileId) {
       conversationId: `tg:${chatId}`,
       limit: 5,
     });
-    const userMsg = msgs.reverse().find(
-      (m) => m.role === "user" && m.content.includes("(image attached)"),
+    // findLast walks back-to-front; the time guard prevents stale messages from
+    // a previous run satisfying the assertion.
+    const userMsg = msgs.findLast(
+      (m) => m.role === "user"
+          && m._creationTime > testStart
+          && m.content.includes("(image attached)"),
     );
     if (userMsg) ok("user message row contains image-attachment block");
     else fail("expected image-attachment block in recent user messages");
@@ -214,6 +219,7 @@ if (smokePdfFileId) {
   console.log("[smoke] 6. document (PDF) inbound");
   {
     const updateId = nextUpdateId();
+    const testStart = Date.now();
     const r = await postUpdate({
       update_id: updateId,
       message: {
@@ -239,8 +245,12 @@ if (smokePdfFileId) {
       conversationId: `tg:${chatId}`,
       limit: 5,
     });
-    const userMsg = msgs.reverse().find(
-      (m) => m.role === "user" && m.content.includes("(PDF attached"),
+    // findLast walks back-to-front; the time guard prevents stale messages from
+    // a previous run satisfying the assertion.
+    const userMsg = msgs.findLast(
+      (m) => m.role === "user"
+          && m._creationTime > testStart
+          && m.content.includes("(PDF attached"),
     );
     if (userMsg) ok("user message row contains pdf-attachment block");
     else fail("expected pdf-attachment block in recent user messages");
@@ -253,6 +263,7 @@ if (smokePdfFileId) {
 console.log("[smoke] 7. unsupported media (sticker) → polite reject");
 {
   const updateId = nextUpdateId();
+  const testStart = Date.now();
   const r = await postUpdate({
     update_id: updateId,
     message: {
@@ -283,7 +294,9 @@ console.log("[smoke] 7. unsupported media (sticker) → polite reject");
     limit: 3,
   });
   const stickerMsg = msgs.find(
-    (m) => m.role === "user" && (m.content.includes("sticker") || m.content.includes("fake-sticker-id")),
+    (m) => m.role === "user"
+        && m._creationTime > testStart
+        && (m.content.includes("sticker") || m.content.includes("fake-sticker-id")),
   );
   if (!stickerMsg) ok("no user-message row for unsupported sticker (correct)");
   else fail("sticker should not produce a user-message row", { content: stickerMsg.content });
