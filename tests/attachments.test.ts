@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import {
@@ -8,6 +8,9 @@ import {
   __setStorageForTesting,
   __setVisionForTesting,
   __setExtractorsForTesting,
+  __resetStorageForTesting,
+  __resetVisionForTesting,
+  __resetExtractorsForTesting,
 } from "../server/attachments.js";
 
 function setupHappyMocks() {
@@ -141,4 +144,10 @@ test("vision API failure: returns AttachmentError but bytes are still stored", a
   const r = await resolveAttachment(Buffer.from([0]), "image/png", "x.png", "telegram");
   assert.equal(isAttachmentError(r), true);
   assert.equal(uploaded, true, "bytes should be uploaded before vision call");
+});
+
+after(() => {
+  __resetStorageForTesting();
+  __resetVisionForTesting();
+  __resetExtractorsForTesting();
 });

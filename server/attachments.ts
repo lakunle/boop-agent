@@ -38,12 +38,12 @@ export const ATTACHMENT_LIMITS = {
   perMessageVisionCostCapUsd: 1.5,
 } as const;
 
-const SUPPORTED_IMAGE_MIMES = new Set([
+export const SUPPORTED_IMAGE_MIMES = new Set([
   "image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "image/gif",
 ]);
-const SUPPORTED_PDF_MIMES = new Set(["application/pdf"]);
-const SUPPORTED_TEXT_MIMES = new Set(["text/plain", "text/markdown"]);
-const DOCX_MIME =
+export const SUPPORTED_PDF_MIMES = new Set(["application/pdf"]);
+export const SUPPORTED_TEXT_MIMES = new Set(["text/plain", "text/markdown"]);
+export const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 // --- test injection points ---
@@ -56,11 +56,19 @@ interface StorageImpl {
   ): Promise<{ storageId: Id<"_storage">; signedUrl: string }>;
 }
 
+let _convexClient: ConvexHttpClient | null = null;
+function getConvexClient(): ConvexHttpClient {
+  if (!_convexClient) {
+    const url = process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL;
+    if (!url) throw new Error("CONVEX_URL not set");
+    _convexClient = new ConvexHttpClient(url);
+  }
+  return _convexClient;
+}
+
 let storageImpl: StorageImpl = {
   async upload(bytes, mimeType, _filename) {
-    const url = process.env.CONVEX_URL || process.env.VITE_CONVEX_URL;
-    if (!url) throw new Error("CONVEX_URL not set");
-    const client = new ConvexHttpClient(url);
+    const client = getConvexClient();
     const uploadUrl = await client.mutation(api.attachmentStorage.generateUploadUrl, {});
     const putRes = await fetch(uploadUrl, {
       method: "POST",
@@ -97,6 +105,19 @@ export function __setExtractorsForTesting(
   if (e.docx) extractorsImpl.docx = e.docx;
 }
 
+const _defaultStorage = storageImpl;
+const _defaultVision = visionImpl;
+const _defaultExtractors: { pdf: typeof extractPdf; docx: typeof extractDocx } = {
+  pdf: extractPdf,
+  docx: extractDocx,
+};
+
+export function __resetStorageForTesting(): void { storageImpl = _defaultStorage; }
+export function __resetVisionForTesting(): void { visionImpl = _defaultVision; }
+export function __resetExtractorsForTesting(): void {
+  extractorsImpl = { ..._defaultExtractors };
+}
+
 // --- main ---
 
 function err(userMessage: string, serverError: Error): AttachmentError {
@@ -111,6 +132,20 @@ function megabytes(n: number): string {
  * Resolve an inbound attachment: validate, upload bytes to Convex storage,
  * extract a textual description via the right extractor (vision/pdf/docx),
  * and return either a ResolvedAttachment or a polite-user-message error.
+ *
+ * IMPORTANT: This function does NOT write a `usageRecords` row. The caller
+ * (channel handler) is responsible for recording usage after a successful
+ * resolution, using `result.costUsd` and the appropriate `source` literal:
+ * - `"vision"` for image kind
+ * - `"pdf-extract"` for pdf kind
+ * - `"docx-extract"` for doc kind (regardless of .docx vs .txt vs .md sub-type)
+ *
+ * Pattern reference: server/channels/telegram.ts handles voice notes the
+ * same way — transcribe.ts produces costUsd, the channel writes the row.
+ *
+ * The `source` parameter on this function ("telegram" | "sendblue") is
+ * reserved for future per-channel routing decisions; currently unused.
+ * Channel handlers should pass their channel id; tests pass either value.
  */
 export async function resolveAttachment(
   bytes: Buffer,
@@ -172,14 +207,29 @@ export async function resolveAttachment(
             ? `\n\n_(processed first ${r.pagesProcessed} of ${r.pagesTotal} pages.)_`
             : "");
       costUsd = r.costUsd;
-    } else if (mimeType === DOCX_MIME) {
-      const r = await extractorsImpl.docx(bytes);
-      description = r.text;
-      costUsd = 0;
     } else {
-      // text/plain or text/markdown
-      description = bytes.toString("utf-8").slice(0, ATTACHMENT_LIMITS.maxTextBytes);
-      costUsd = 0;
+      // kind === "doc"
+      if (mimeType === DOCX_MIME) {
+        const r = await extractorsImpl.docx(bytes);
+        description = r.text;
+        costUsd = 0;
+      } else {
+        // text/plain or text/markdown — see Fix I4 for byte-aware truncation
+        const decoded = bytes.toString("utf-8");
+        const fullByteLen = Buffer.byteLength(decoded, "utf-8");
+        if (fullByteLen <= ATTACHMENT_LIMITS.maxTextBytes) {
+          description = decoded;
+        } else {
+          // Conservative slice for utf-8 worst case (2 bytes/char), matching
+          // docx-extract.ts. CJK-heavy text may slightly overshoot but the
+          // truncation is bounded; the marker below is accurate.
+          const truncated = decoded.slice(0, Math.floor(ATTACHMENT_LIMITS.maxTextBytes / 2));
+          const totalKb = Math.round(fullByteLen / 1024);
+          const capKb = Math.round(ATTACHMENT_LIMITS.maxTextBytes / 1024);
+          description = `${truncated}\n\n[truncated — first ${capKb} KB of ${totalKb} KB]`;
+        }
+        costUsd = 0;
+      }
     }
   } catch (e) {
     const msg =
