@@ -14,6 +14,7 @@ import {
 import {
   formatAttachmentBlock,
   recordAttachmentUsage,
+  toPersistedAttachment,
 } from "./attachment-helpers.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -168,7 +169,7 @@ async function resolveTelegramPhoto(
   photos: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>,
   caption: string | undefined,
   chatId: number,
-): Promise<string | null> {
+): Promise<{ body: string; attachments: ReturnType<typeof toPersistedAttachment>[] } | null> {
   const conversationId = `tg:${chatId}` as ConversationId;
   const pick = pickPhoto(photos, ATTACHMENT_LIMITS.maxImageBytes);
   if (!pick) {
@@ -202,14 +203,17 @@ async function resolveTelegramPhoto(
 
   await recordAttachmentUsage(resolved, conversationId, "telegram");
 
-  return formatAttachmentBlock(resolved, null, 1, caption);
+  return {
+    body: formatAttachmentBlock(resolved, null, 1, caption),
+    attachments: [toPersistedAttachment(resolved)],
+  };
 }
 
 async function resolveTelegramDocument(
   doc: { file_id: string; mime_type?: string; file_name?: string; file_size?: number },
   caption: string | undefined,
   chatId: number,
-): Promise<string | null> {
+): Promise<{ body: string; attachments: ReturnType<typeof toPersistedAttachment>[] } | null> {
   const conversationId = `tg:${chatId}` as ConversationId;
   const declaredMime = doc.mime_type ?? "application/octet-stream";
   const cap =
@@ -247,7 +251,10 @@ async function resolveTelegramDocument(
 
   await recordAttachmentUsage(resolved, conversationId, "telegram");
 
-  return formatAttachmentBlock(resolved, null, 1, caption);
+  return {
+    body: formatAttachmentBlock(resolved, null, 1, caption),
+    attachments: [toPersistedAttachment(resolved)],
+  };
 }
 
 export const telegramChannel: Channel = {
@@ -364,6 +371,7 @@ export const telegramChannel: Channel = {
 
       // 5. Resolve content (text, voice, photo, document, or unsupported media)
       let content: string | null = null;
+      let attachments: ReturnType<typeof toPersistedAttachment>[] | undefined;
       if (msg.voice) {
         // Ack early — transcription can take a few seconds and Telegram retries on slow responses.
         res.json({ ok: true });
@@ -374,12 +382,16 @@ export const telegramChannel: Channel = {
         content = msg.text;
       } else if (Array.isArray(msg.photo) && msg.photo.length > 0) {
         res.json({ ok: true });
-        content = await resolveTelegramPhoto(msg.photo, msg.caption, chatId);
-        if (!content) return;
+        const result = await resolveTelegramPhoto(msg.photo, msg.caption, chatId);
+        if (!result) return;
+        content = result.body;
+        attachments = result.attachments;
       } else if (msg.document) {
         res.json({ ok: true });
-        content = await resolveTelegramDocument(msg.document, msg.caption, chatId);
-        if (!content) return;
+        const result = await resolveTelegramDocument(msg.document, msg.caption, chatId);
+        if (!result) return;
+        content = result.body;
+        attachments = result.attachments;
       } else if (msg.sticker || msg.video || msg.animation || msg.video_note) {
         res.json({ ok: true });
         const what =
@@ -401,6 +413,7 @@ export const telegramChannel: Channel = {
         conversationId: `tg:${chatId}` as ConversationId,
         content,
         from: `tg:${msg.from?.username ? "@" + msg.from.username : chatId}`,
+        attachments,
       });
     });
 

@@ -3,7 +3,7 @@ import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { runTurn } from "./channels/index.js";
 import { resolveAttachment, isAttachmentError } from "./attachments.js";
-import { formatAttachmentBlock, recordAttachmentUsage } from "./channels/attachment-helpers.js";
+import { formatAttachmentBlock, recordAttachmentUsage, toPersistedAttachment } from "./channels/attachment-helpers.js";
 
 const API_BASE = "https://api.sendblue.com/api";
 const MAX_CHUNK = 2900;
@@ -203,6 +203,7 @@ export function createSendblueRouter(): express.Router {
 
     const conversationId = `sms:${from_number}` as `sms:${string}`;
     let body = content ?? "";
+    const resolvedAttachments: ReturnType<typeof toPersistedAttachment>[] = [];
 
     if (mediaUrls.length > 0) {
       const blocks: string[] = [];
@@ -233,6 +234,7 @@ export function createSendblueRouter(): express.Router {
             // Caption is appended once after all blocks (see below) so it is
             // never lost when an attachment fails. We pass undefined here.
             blocks.push(formatAttachmentBlock(resolved, idx, mediaUrls.length, undefined));
+            resolvedAttachments.push(toPersistedAttachment(resolved));
           }
         } catch (e) {
           console.error(`[sendblue] media fetch ${i + 1}/${mediaUrls.length} failed`, e);
@@ -258,6 +260,7 @@ export function createSendblueRouter(): express.Router {
       conversationId,
       content: body,
       from: from_number,
+      attachments: resolvedAttachments.length > 0 ? resolvedAttachments : undefined,
     });
   });
 

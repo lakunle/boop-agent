@@ -10,6 +10,31 @@ import type { ResolvedAttachment } from "../attachments.js";
 import type { ConversationId } from "./types.js";
 
 /**
+ * Strip runtime-only fields from a ResolvedAttachment to produce the
+ * shape persisted on a message row. The channel handler passes the
+ * result via ParsedInbound.attachments → messages.send.attachments.
+ */
+export function toPersistedAttachment(r: ResolvedAttachment): {
+  kind: typeof r.kind;
+  mimeType: string;
+  sizeBytes: number;
+  storageId: typeof r.storageId;
+  signedUrl?: string;
+  description?: string;
+  filename?: string;
+} {
+  return {
+    kind: r.kind,
+    mimeType: r.mimeType,
+    sizeBytes: r.sizeBytes,
+    storageId: r.storageId,
+    signedUrl: r.signedUrl,
+    description: r.description,
+    filename: r.filename,
+  };
+}
+
+/**
  * Compose the structured user-message block for a single resolved attachment.
  * Matches the spec's "User-message format" section: header → caption →
  * filename → description → link, separated by blank lines.

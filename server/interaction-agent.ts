@@ -1,6 +1,7 @@
 import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { api } from "../convex/_generated/api.js";
+import type { Doc } from "../convex/_generated/dataModel.js";
 import { convex } from "./convex-client.js";
 import { createMemoryMcp } from "./memory/tools.js";
 import { extractAndStore } from "./memory/extract.js";
@@ -155,6 +156,7 @@ Format: Plain iMessage-friendly text. Markdown sparingly. Keep replies under ~40
 interface HandleOpts {
   conversationId: string;
   content: string;
+  attachments?: Doc<"messages">["attachments"];
   turnTag?: string;
   onThinking?: (chunk: string) => void;
   // "proactive" persists the inbound message with role=system instead of
@@ -176,6 +178,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     conversationId: opts.conversationId,
     role: inboundRole,
     content: opts.content,
+    attachments: opts.attachments,
     turnId,
   });
   broadcast(opts.kind === "proactive" ? "proactive_notice" : "user_message", {

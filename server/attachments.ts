@@ -43,6 +43,18 @@ export const ATTACHMENT_LIMITS = {
   perMessageVisionCostCapUsd: 1.5,
 } as const;
 
+function getCostCapUsd(): number {
+  const fromEnv = process.env.BOOP_VISION_COST_CAP_USD;
+  if (fromEnv) {
+    const parsed = Number(fromEnv);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    console.warn(
+      `[attachments] invalid BOOP_VISION_COST_CAP_USD=${fromEnv} — using default ${ATTACHMENT_LIMITS.perMessageVisionCostCapUsd}`,
+    );
+  }
+  return ATTACHMENT_LIMITS.perMessageVisionCostCapUsd;
+}
+
 export const SUPPORTED_IMAGE_MIMES = new Set([
   "image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "image/gif",
 ]);
@@ -206,7 +218,7 @@ export async function resolveAttachment(
       costUsd = v.costUsd;
       modelUsed = v.model;  // surface the actual model from VisionResult
     } else if (kind === "pdf") {
-      const r = await extractorsImpl.pdf(bytes, ATTACHMENT_LIMITS.perMessageVisionCostCapUsd);
+      const r = await extractorsImpl.pdf(bytes, getCostCapUsd());
       description = r.description +
         (r.truncatedReason === "cost-cap"
           ? `\n\n_(stopped at page ${r.pagesProcessed}/${r.pagesTotal} — costs were getting steep, send a tighter slice if you want the rest.)_`

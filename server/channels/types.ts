@@ -1,4 +1,5 @@
 import type { Router } from "express";
+import type { Doc } from "../../convex/_generated/dataModel.js";
 
 /** Identifier for each channel; used as the conversationId prefix and registry key. */
 export type ChannelId = "sms" | "tg";
@@ -17,6 +18,8 @@ export interface ParsedInbound {
   /** Human-readable identifier of sender for logs only. */
   from: string;
   content: string;
+  /** Inbound attachment metadata (photos, PDFs, docs) — optional. */
+  attachments?: Doc<"messages">["attachments"];
 }
 
 export interface Channel {
