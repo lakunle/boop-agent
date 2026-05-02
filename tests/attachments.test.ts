@@ -146,6 +146,42 @@ test("vision API failure: returns AttachmentError but bytes are still stored", a
   assert.equal(uploaded, true, "bytes should be uploaded before vision call");
 });
 
+test("sniffs mime when channel reports application/octet-stream for an actual JPEG", async () => {
+  setupHappyMocks();
+  // Real JPEG header bytes — FF D8 FF E0 (JFIF)
+  const fakeJpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+    Buffer.alloc(100, 0),  // padding
+  ]);
+  const r = await resolveAttachment(fakeJpeg, "application/octet-stream", "photo.jpg", "telegram");
+  if (isAttachmentError(r)) {
+    throw new Error(`expected success after sniff, got error: ${r.userMessage}`);
+  }
+  assert.equal(r.kind, "image");
+  assert.equal(r.mimeType, "image/jpeg");  // sniffed, not the declared octet-stream
+});
+
+test("sniffs mime for a PDF served as octet-stream", async () => {
+  setupHappyMocks();
+  const fakePdf = Buffer.concat([
+    Buffer.from("%PDF-1.4", "ascii"),
+    Buffer.alloc(100, 0),
+  ]);
+  const r = await resolveAttachment(fakePdf, "application/octet-stream", "doc.pdf", "telegram");
+  if (isAttachmentError(r)) {
+    throw new Error(`expected success after sniff, got error: ${r.userMessage}`);
+  }
+  assert.equal(r.kind, "pdf");
+  assert.equal(r.mimeType, "application/pdf");
+});
+
+test("rejects octet-stream when bytes don't match any known signature", async () => {
+  setupHappyMocks();
+  const garbage = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
+  const r = await resolveAttachment(garbage, "application/octet-stream", "mystery.bin", "telegram");
+  assert.equal(isAttachmentError(r), true);
+});
+
 after(() => {
   __resetStorageForTesting();
   __resetVisionForTesting();
