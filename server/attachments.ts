@@ -16,6 +16,11 @@ export interface ResolvedAttachment {
   description: string;
   filename?: string;
   costUsd: number;
+  /** The model/tool used to extract the description. "gpt-4o" (or override)
+   *  for images, "pdfjs+vision" for PDFs that hit selective vision rendering,
+   *  "pdfjs" for text-heavy PDFs that never called vision, "mammoth" for docx,
+   *  undefined for raw text/markdown reads. Used by usageRecords aggregation. */
+  model?: string;
 }
 
 export interface AttachmentError {
@@ -192,12 +197,14 @@ export async function resolveAttachment(
   // 2. Run the right extractor.
   let description = "";
   let costUsd = 0;
+  let modelUsed: string | undefined;
 
   try {
     if (kind === "image") {
       const v = await visionImpl(bytes, mimeType);
       description = v.description;
       costUsd = v.costUsd;
+      modelUsed = v.model;  // surface the actual model from VisionResult
     } else if (kind === "pdf") {
       const r = await extractorsImpl.pdf(bytes, ATTACHMENT_LIMITS.perMessageVisionCostCapUsd);
       description = r.description +
@@ -207,12 +214,16 @@ export async function resolveAttachment(
             ? `\n\n_(processed first ${r.pagesProcessed} of ${r.pagesTotal} pages.)_`
             : "");
       costUsd = r.costUsd;
+      // PDFs that triggered any vision call have non-zero cost; reflect that
+      // in the model name. PDFs handled purely by text extraction get "pdfjs".
+      modelUsed = r.costUsd > 0 ? "pdfjs+vision" : "pdfjs";
     } else {
       // kind === "doc"
       if (mimeType === DOCX_MIME) {
         const r = await extractorsImpl.docx(bytes);
         description = r.text;
         costUsd = 0;
+        modelUsed = "mammoth";
       } else {
         // text/plain or text/markdown — see Fix I4 for byte-aware truncation
         const decoded = bytes.toString("utf-8");
@@ -229,6 +240,7 @@ export async function resolveAttachment(
           description = `${truncated}\n\n[truncated — first ${capKb} KB of ${totalKb} KB]`;
         }
         costUsd = 0;
+        // raw text reads — leave modelUsed undefined; the usage row uses a fallback.
       }
     }
   } catch (e) {
@@ -250,5 +262,6 @@ export async function resolveAttachment(
     description,
     filename,
     costUsd,
+    model: modelUsed,
   };
 }

@@ -152,6 +152,7 @@ function formatAttachmentBlock(
   resolved: ResolvedAttachment,
   index: number | null,
   total: number,
+  caption: string | undefined,
 ): string {
   const emoji = resolved.kind === "image" ? "🖼️" : resolved.kind === "pdf" ? "📄" : "📎";
   const label =
@@ -163,6 +164,7 @@ function formatAttachmentBlock(
   const counter = index !== null && total > 1 ? ` ${index + 1}/${total}` : "";
   return [
     `${emoji} (${label} attached${counter})`,
+    caption ? `Caption: ${caption}` : null,
     resolved.filename ? `Filename: ${resolved.filename}` : null,
     `Description: ${resolved.description}`,
     `Link: ${resolved.signedUrl}`,
@@ -198,7 +200,11 @@ async function recordAttachmentUsage(
     .mutation(api.usageRecords.record, {
       source,
       conversationId,
-      model: source === "vision" ? "gpt-4o" : "n/a",
+      // Prefer the model surfaced by the resolver (e.g. "gpt-4o" or
+      // "BOOP_VISION_MODEL" override for vision; "pdfjs", "pdfjs+vision",
+      // "mammoth" for extractors). Fall back to the source name for raw
+      // text reads where no specific tool was used.
+      model: resolved.model ?? source,
       inputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -247,8 +253,7 @@ async function resolveTelegramPhoto(
 
   await recordAttachmentUsage(resolved, conversationId);
 
-  const block = formatAttachmentBlock(resolved, null, 1);
-  return caption ? `${block}\n\nCaption: ${caption}` : block;
+  return formatAttachmentBlock(resolved, null, 1, caption);
 }
 
 async function resolveTelegramDocument(
@@ -293,8 +298,7 @@ async function resolveTelegramDocument(
 
   await recordAttachmentUsage(resolved, conversationId);
 
-  const block = formatAttachmentBlock(resolved, null, 1);
-  return caption ? `${block}\n\nCaption: ${caption}` : block;
+  return formatAttachmentBlock(resolved, null, 1, caption);
 }
 
 export const telegramChannel: Channel = {
