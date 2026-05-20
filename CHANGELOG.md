@@ -8,6 +8,152 @@ Format:
 
 ---
 
+## Unreleased — iOS local message cache
+
+Chat history paints **instantly** on cold launch and every thread switch. Backed by per-thread JSON files under `Caches/threads/<threadId>.json` plus `Caches/threads-list.json` for the dock state. Server stays source-of-truth; cache renders first, then a background `/messages?threadId=...&limit=50` fetch merges by Convex `_id`. SSE continues to write into the cache in real time. Implementation plan: `docs/superpowers/plans/2026-05-20-ios-message-cache.md`. Design spec: `docs/superpowers/specs/2026-05-20-ios-message-cache-design.md`.
+
+**Server**
+- Changed: `POST /channels/ios/inbound` now returns `userMessageId` — the canonical Convex id of the persisted user message — so the client can stamp its optimistic `local-<uuid>` send and merge-by-id is trivial on the next refresh. `handleUserMessage` gains a `precomputedUserMessageId` opt that lets the iOS route persist + broadcast inline (the route awaits persistence to get the id; the rest of the turn fires fire-and-forget as before). Other channels (Sendblue, Telegram) unchanged.
+- Changed: `ParsedInbound` + `HandleOpts` also carry `precomputedTurnId` so the iOS route generates the turnId before its inline persist and the agent turn re-uses it — keeps turn grouping intact across the iOS persist split.
+- Added: assertion in `tests/ios-thread-routes.test.ts` that `/inbound` returns a non-empty `userMessageId`.
+
+**iOS**
+- Added: `Boop/Storage/MessageCache.swift` — singleton actor. Per-thread debounced writes (500ms via a shared timer + per-thread payload coalescing), atomic replacement via `FileManager.replaceItemAt`, hard-flush on `scenePhase = .background`, `purgeAll` on unpair, `scheduleWriteThreadsList` for the dock state with the same debounce model.
+- Added: `Boop/Storage/CachedModels.swift` — Codable shapes (`CachedThread`, `CachedThreadsList`, `CachedMessage`, `CachedAttachment`, `CachedThreadRow`) with a `schemaVersion` field so shape changes don't silently corrupt old caches.
+- Changed: `ChatStore.messages` becomes a computed view over `perThread: [String: [Message]]`. `switchTo(threadId:)` reads cache-first (memory → disk → empty), paints immediately, then fires `refreshFromServer(threadId:)` in the background. The refresh merges by Convex `_id` with a content+role+±5s fallback for the rare unstamped optimistic send. Synthetic ids (`stream-` / `ack-` / `final-`) are filtered out before disk writes.
+- Changed: `ChatStore.send` now stamps the optimistic `local-<uuid>` with the canonical id from `/inbound`'s response, so the heuristic merge is a defense-in-depth path rather than the primary one. The stamp targets the originating thread by captured id, not the active thread at callback time.
+- Changed: `ThreadsStore` gains `hydrateFromCache()` (called from `RootView` once paired) + private `writeListCache()` after every list-affecting mutation (loadThreads, archive, unarchive, delete, selectThread, createNewThread, fanout-driven noteIncomingMessage/applyIconUpdate). The active thread id persists across launches.
+- Changed: `PairingStore.reset` purges the cache via `Task.detached` so re-pair starts clean.
+- Changed: `BoopApp` watches `scenePhase`; transitioning to `.background` triggers `MessageCache.flushAll()` so pending debounced writes land before suspension.
+- Changed: `mergeMessages` preserves SSE-injected attachments — when a server row's `_id` matches a cached one, attachments are merged by `Attachment.id` so a refresh racing the server's post-turn attachment persist doesn't erase locally-injected files.
+
+**Out of scope (intentional)**
+- Attachment blob caching — kind/mimeType/storageId stays cached, but image/PDF bytes still re-fetch from the signed URL on tap. Signed URLs expire server-side; caching them would be pointless.
+- Offline send queue. Sending while offline still fails the same way it does today.
+- `GET /messages?since=<ms>` server-side delta endpoint. Volumes are tiny (≤50 msgs per thread) — always-refetching the latest 50 in the background is cheap.
+- XCTest target. Verification was manual per the existing iOS testing gap.
+
+## Unreleased — iOS permanent thread deletion
+
+Closes the last remaining lifecycle gap from the redesign: archived threads can now be removed for good. Long-press an archived row → "Delete forever" → confirm. The server purges messages, execution-agent rows, and per-agent logs in a single Convex mutation; attachment storage objects are left alone (no other code path purges `_storage` either).
+
+**Server**
+- Added: `convex/threads.ts` gains `remove(threadId, expectedDeviceId?)` — cascade-deletes messages (via `by_thread`), execution-agent rows for the `ios:<deviceId>:<threadId>` conversationId (via `by_conversation`), and per-agent logs (via `by_agent`). Reads are capped (1000 msgs, 500 agents, 500 logs/agent) so a runaway thread can't blow the per-transaction budget. Throws `forbidden` when `expectedDeviceId` doesn't match the row's owner — defense-in-depth on top of the bearer check.
+- Added: `DELETE /channels/ios/threads/:threadId` — idempotent (200 even if already gone), 403 on cross-device targeting.
+- Added: `tests/ios-thread-routes.test.ts` covers the archive → delete → list-empty path, the idempotent-double-delete path, and the cross-device 403.
+
+**iOS**
+- Added: `BoopClient.deleteThread(threadId:)` — surfaces server 403 as `ClientError.http(403, _)`.
+- Added: `ThreadsStore.deleteThread(_:)` — returns `Bool` so the caller can drop the row on success; on failure the message flows through `loadError`. Also tolerates the case where someone calls it on an open thread (drops locally + picks next-active or creates fresh).
+- Changed: `ArchivedScreen.swift` — long-press on a row reveals "Delete forever" (destructive) and "Restore" via `.contextMenu`. Confirmation runs through `.confirmationDialog`. While deleting, the row fades to 50% + shows a spinner.
+
+**Out of scope**
+- Deleting open (non-archived) threads — still archive-only from the open thread bar. Archive-then-delete keeps the lifecycle clear: archive is the soft-delete affordance, delete is the hard one.
+- Purging orphaned attachments from `_storage` — no other code path purges those either; until there's a sweeping retention policy, deleted threads leave their attachment blobs behind.
+
+## Unreleased — iOS APNs push notifications
+
+The iPhone now receives a lock-screen / banner notification when the agent replies or a proactive notice (e.g. inbox classifier) lands while the app is backgrounded. Tap the banner → app opens to the right thread. While the app is foregrounded the banner is suppressed (SSE is already painting the content live). Implementation plan: `docs/superpowers/plans/2026-05-19-ios-apns-push.md`.
+
+**Server**
+- Added: `server/apns.ts` — APNs sender + broadcast subscriber. Token-based JWT (ES256 over the .p8 key) with a 50-min in-process cache, lazy HTTP/2 sessions per environment (`api.sandbox.push.apple.com` for development, `api.push.apple.com` for production), one retry on `ExpiredProviderToken`, and 410-Gone-driven token eviction. Subscribes to `assistant_message` and `proactive_notice` and forwards only those whose `conversationId` starts with `ios:<deviceId>:`. Hand-rolled over `node:http2` + `node:crypto` — no new dependencies.
+- Added: `convex/devices.ts` gains `setApnsToken(deviceId, apnsDeviceToken, apnsEnvironment)`, `clearApnsTokenByToken(token)` (called on 410), and `apnsTargetForDevice(deviceId)` (lookup helper for the subscriber). New `by_apnsToken` index + optional `apnsEnvironment` field (`"development" | "production"`) on the `devices` table — additive, no migration needed.
+- Added: `POST /channels/ios/apns/register` and `POST /channels/ios/apns/unregister` on the iOS router. Register validates the hex token shape (32+ chars) and the environment string before persisting.
+- Added: `initApns()` called from `server/index.ts` boot. No-op (with one log line: `[apns] disabled (config missing)`) when `APNS_TEAM_ID` / `APNS_KEY_ID` / `APNS_PRIVATE_KEY` aren't set — SSE still delivers in foreground for users who don't want push.
+- Added: new env vars in `.env.example` — `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_PRIVATE_KEY` (multi-line PEM, or single-line with `\n` escapes — both forms work), `APNS_BUNDLE_ID` (defaults to `dev.boop.Boop`).
+- Added: `tests/apns.test.ts` — ES256 JWT round-trips through `createVerify` against the source public key (proves we're producing valid signatures), `\n`-escaped key form works, body capping at 240 chars, conversationId parsing (skip non-iOS), 410 wired to `clearToken`, 200 returns `pushed:true` with parsed threadId. All 8 tests run hermetic via injected deps — no live APNs traffic.
+
+**iOS**
+- Added: `Boop/State/PushDelegate.swift` — `UIApplicationDelegate` + `UNUserNotificationCenterDelegate`. Receives the device token from the OS, registers it with the server (using the Keychain bearer when available, otherwise stashes for `PairingStore` to register post-pair), suppresses banners while foregrounded (returns `[]` from `willPresent`), and stashes the tapped notification's `threadId` into `AppSettings.pendingDeepLinkThreadId` so cold-start deep-links work.
+- Added: `Boop/Resources/Boop.entitlements` — `aps-environment = development`. Swap to `production` before archiving for TestFlight / Release. Referenced via `CODE_SIGN_ENTITLEMENTS` in `project.yml`.
+- Changed: `Boop/BoopApp.swift` installs `@UIApplicationDelegateAdaptor(PushDelegate.self)` so the SwiftUI app sees the AppDelegate callbacks.
+- Changed: `Boop/State/PairingStore.swift` — once `phase = .paired`, requests notification permission via `UNUserNotificationCenter.requestAuthorization(...)` and, on grant, calls `UIApplication.shared.registerForRemoteNotifications()`. If the OS already vended a token before pair completed (the typical re-launch case), the cached token gets re-POSTed to the server right then.
+- Changed: `Boop/State/ThreadsStore.swift.loadThreads()` consumes `AppSettings.pendingDeepLinkThreadId` ahead of the default "first thread wins" selection — so tapping a push for a non-active thread lands you on the right one.
+- Added: `BoopClient.registerApns(deviceToken:environment:)` + `unregisterApns(deviceToken:)`. Existing `EmptyResponse` decoder reused.
+
+**Out of scope**
+- Live Activities + ActivityKit push tokens (different token type, ~12h expiry, separate work).
+- Silent / `content-available` background pushes.
+- Widgets, App Intents, Siri shortcuts (the M4 office-hours scope around `AskBoopIntent`).
+- Multi-device-per-user routing — one APNs token per device row, mirrors the existing single-bearer constraint.
+
+**Apple Developer setup required for pushes to actually fire**
+1. https://developer.apple.com/account/resources/identifiers — toggle Push Notifications on the App ID.
+2. https://developer.apple.com/account/resources/authkeys/list — create an APNs auth key (`.p8`), download it, note the Key ID + Team ID.
+3. Paste those into the server's `.env.local` (`APNS_*` block in `.env.example`).
+4. iOS-side: open `ios/Boop.xcodeproj` after `xcodegen generate`, ensure the target's signing team matches the one with the auth key.
+Without these the server runs fine and the iPhone keeps working — push just stays off.
+
+## Unreleased — iOS redesign Plan B (archived threads + unread fanout)
+
+Closes the work that Plan A deferred. The MenuSheet "Archived" card is now wired to a browse-and-restore screen; inactive open threads light up an unread dot via a new device-wide SSE fanout. Implementation plan: `docs/superpowers/plans/2026-05-19-ios-redesign-plan-b-finish.md`.
+
+**Server**
+- Added: `convex/threads.ts` gains `listArchived(deviceId)` (newest-archived-first, capped at 200 rows) and `unarchive(threadId)` (rejects when the device already has 4 open threads). Same `by_device` index used throughout — no schema change.
+- Added: `GET /channels/ios/threads/archived` and `POST /channels/ios/threads/:threadId/unarchive` (409 when 4 already open).
+- Added: `GET /channels/ios/fanout` — bearer-scoped device-wide SSE. Subscribes to every broadcast for `ios:<deviceId>:*` and re-emits a single `thread_activity` event with `{ threadId, kind: "message" | "icon", icon? }` for `assistant_message` and `thread_icon`. No deltas / agent events / attachments forwarded — the fanout payload stays cheap so the iPhone can keep it open in the background.
+- Added: `tests/ios-thread-routes.test.ts` covers archive → list → unarchive round-trip, the 4-open conflict (expects 409 on unarchive), and the fanout SSE actually delivering a `thread_activity` event after `/inbound`.
+
+**iOS**
+- Added: `Views/ArchivedScreen.swift` — sheet listing archived threads with per-thread tint chip, last-activity timestamp, tap-to-restore. Wired into `MenuSheet`'s previously-stub "Archived" card via `RootView` (also gains a `--open-archived` launch-arg for screenshot automation).
+- Added: `Networking/BoopClient.swift` gains `listArchivedThreads()` and `unarchiveThread(threadId:)`. The 409 from the server surfaces as a typed `ClientError.http(409, _)` which `ThreadsStore.unarchiveThread(_:)` translates into a friendly "archive one open thread first" toast on the screen.
+- Added: `FanoutConnection` in `BoopClient.swift` — a thin SSE subscriber (mirrors `SSEConnection`) yielding `ThreadActivity` events. `ThreadsStore` opens it on `bind(bearer:)` and feeds events into the existing `noteIncomingMessage(threadId:)` / `applyIconUpdate(threadId:icon:)` methods, with the same exponential-backoff reconnect policy (1s → 30s cap) as `ChatStore`. The active thread already short-circuits `noteIncomingMessage` so double-counts can't happen.
+- Changed: `RootView.swift` adds the `showArchived` sheet binding and the `--open-archived` launch arg.
+
+**Out of scope (intentional)**
+- APNs / push (M4 in the original office-hours design — bigger scope than Plan B).
+- Offline history cache.
+- Permanent deletion of archived threads (archive is soft-delete; reopen to read).
+- XCTest target setup.
+
+## Unreleased — iOS redesign Plan A (multi-thread + new visual system)
+
+Foundation of the redesigned iOS client. After Plan A: up to 4 concurrent threads per device, each with an agent-picked Lucide icon and deterministic per-thread color tint; native Markdown rendering in chat bubbles; full-screen .md/.pdf file preview; bottom-sheet menu with 2×2 cards; full dark-mode design system (Inter + JetBrains Mono, color tokens, ~60 bundled Lucide icons). See the design brief at `docs/superpowers/specs/2026-05-15-ios-redesign-brief.md` and the implementation plan at `docs/superpowers/plans/2026-05-15-ios-redesign-plan-a-foundation.md`.
+
+**Server**
+- Added: `threads` Convex table (deviceId, icon, label, archived, createdAt, lastMessageAt). Max 4 open threads per device, enforced via `.take()` for bounded reads. Plus 6 CRUD helpers including `ensureDefault` for back-compat with M1 single-thread devices.
+- Added: `messages.threadId` optional field + `by_thread` index + `listForThread` query. Existing M1 rows without a `threadId` continue to read.
+- Added: `parseIosConversationId` + `iosConversationId` helpers in `server/channels/types.ts`. Conversation IDs are now `ios:<deviceId>:<threadId>` for new threads, with `ios:<deviceId>` (M1) still parsing as default-thread.
+- Added: `/channels/ios/threads`, `/threads/create`, `/threads/:id/archive`, `/threads/:id/icon` endpoints. `/inbound`, `/messages`, `/stream` now accept (or require, for SSE) a `threadId`; missing `threadId` on `/inbound` and `/messages` falls back to `ensureDefault`.
+- Added: `set_thread_icon` self-tool — the dispatcher picks a Lucide icon (from a curated set of ~40) on the first reply in a new thread, via a per-turn `currentTurnThreadId` ref plumbed from `handleUserMessage`. Dispatcher prompt updated with the threading guidance.
+- Added: `tests/threads.test.ts` + `tests/ios-thread-routes.test.ts` — node:test smoke covering the Convex CRUD + the HTTP routes against a running dev server.
+
+**iOS**
+- Changed: `ChannelId` is unchanged at the type level (still `"sms" | "tg" | "ios"`) but conversation IDs now embed `threadId` for iOS. iOS app must always pass `threadId` on `/inbound` and `/stream` going forward.
+- Added: `ios/Boop/Resources/Fonts/` — Inter (Regular/Medium/SemiBold) + JetBrains Mono (Regular/Medium), bundled and registered at launch via `CTFontManagerRegisterFontsForURL`.
+- Added: design-system tokens — `BoopColor` (dark-mode primary), `BoopFont` (Inter + JetBrains Mono scale), `BoopSpacing` + `BoopRadius` constants. Match the design brief 1:1.
+- Added: `ThreadTints` — 8-color palette (amber/sky/emerald/violet/pink/citrine/mint/crimson) with `.solid`/`.fill`/`.border`/`.text` accessors and a deterministic FNV-1a hash from `threadId`. Same thread → same tint forever.
+- Added: ~60 Lucide icons bundled as vector PDF imagesets under `Resources/Assets.xcassets/Lucide`. `LucideName` enum + `LucideIcon` view; the agent picks from the curated set via `set_thread_icon`.
+- Added: `BoopThread` + `ServerThread` + `ThreadsResponse` + `CreateThreadResponse` shapes. `ThreadsStore` manages the list of open threads, active selection, unread flags, and integrates with `ChatStore.switchTo(threadId:)`.
+- Changed: `BoopClient` gains `listThreads()` / `createThread()` / `archiveThread(threadId:)`; existing `sendInbound` / `fetchMessages` / `SSEConnection` now require a `threadId`. SSE URL appends `?threadId=...` so the server can scope events per-thread.
+- Changed: `ChatStore` is keyed off `switchTo(threadId:)`. Switching cancels the current stream, clears messages, fetches new history, restarts the stream — clean break instead of trying to fan out one SSE across threads.
+- Added: components — `TypingBubble` (three-dot animation), `MarkdownView` (one-pass line parser + `AttributedString` inline), `MessageBubble` (Markdown for assistant, plain for user), `FileCard` (chat + files-screen row), `SubAgentPill` (live agent-running indicator), `Dock` (composer + thread bar in one glass surface).
+- Added: `MenuSheet` — bottom sheet, 2×2 cards (Files / Live agents / Archived / Settings). Triggered by the new dot-grid header button.
+- Added: `FilePreviewScreen` — full-screen viewer for `.md` and `.txt` (rendered via `MarkdownView` in sheet mode), with header (back/share/more), file-info card, and a bottom action bar (Open in Thread / Download). `.pdf` is a placeholder for M2.
+- Changed: `ChatView` is now `BoopColor.bg` + dot-grid header + scrolling message list + floating glass `Dock` + error-banner. `RootView` wires up `ThreadsStore` + auto-creates the first thread on a fresh device + presents `MenuSheet` + nested `SettingsView`. `PairingView` and `SettingsView` restyled with the new tokens.
+- Known build blocker: bundling the Lucide imagesets triggers `actool` to demand a simulator runtime matching the SDK version. On a Mac running Xcode 26.5 with only the iOS 26.4 simulator runtime installed, the build fails at asset compilation. Workarounds: install the iOS 26.5 simulator runtime via Xcode → Settings → Platforms, or build for a real iPhone (which uses the device's installed OS, not the simulator runtime). Every Swift file in the new code typechecks cleanly via `swiftc -typecheck`.
+
+**Out of scope for Plan A (lands in Plan B)**
+- Files browser screen and Live agents watcher screen (their menu cards in MenuSheet currently dispatch to placeholders).
+- iOS-side SSE fan-out for unread badges on inactive threads (server fires per-thread events, client only listens on the active one for now).
+
+## Unreleased — Native iOS channel
+
+- Added: `ios` channel — a third channel alongside Sendblue (iMessage) and Telegram, designed for a native iOS app that pairs with the server over HTTP/SSE. Conversation IDs are `ios:<deviceId>`. Endpoints live under `/channels/ios`: `pair/create` + `pair/check` + `pair/consume` for the bearer-token pairing flow, `inbound` for user messages, `messages` for cold-start history, and `stream` for SSE.
+- Added: `server/channels/ios.ts` — implements the `Channel` interface so iOS is a first-class registry member. `send()` is a defensive `assistant_message` broadcast (the SSE stream is the real delivery path); `webhookRouter()` returns the iOS router; `isConfigured()` always true (no env vars). The router is now auto-mounted via `mountChannelRouters` instead of a direct `app.use` in `server/index.ts`.
+- Added: `convex/devices.ts` + `devices` table — stores `deviceId`, hashed pairing code, hashed bearer token, label, and `lastSeenAt`. Plaintext bearer never touches Convex; the dashboard consumes the 6-digit code and the phone polls `/pair/check` for one-shot bearer pickup from an in-memory delivery map.
+- Added: SSE allowlist on `/channels/ios/stream` — forwards only `assistant_delta`, `assistant_message`, `assistant_ack`, `thinking`, and `error` events, scoped to the authenticated device's `conversationId`.
+- Added: `server/broadcast.ts:subscribe` — internal `EventEmitter` API so SSE can tap broadcasts without pretending to be a WebSocket. Existing dashboard WS fan-out unchanged. Tests in `tests/broadcast.test.ts`.
+- Added: `assistant_delta` event emitted per text block in `server/interaction-agent.ts` with a per-turn `seq` counter, so the iOS UI can render streaming replies in order.
+- Added: F5-style retry-with-backoff on the final `messages.send` write in `runTurn`. SSE already streamed the reply, so a silent persist failure used to leave an orphan (visible live, gone on cold reload). Three attempts with 100ms × 3^n backoff, then an `error` broadcast so iOS clients can flag the lost row.
+- Added: iOS pairing UI in the dashboard (`debug/src/components/DevicesSection.tsx`) — live device list (Convex `useQuery`) with last-seen relative time, 6-digit pair input + label, revoke button with confirm. Surfaced as the first card in the Connections panel.
+- Added: `set_active_channel` now accepts `"ios"` / `"iphone"` so the user can route proactive nudges and automation results to their iPhone over SSE.
+- Added: dispatcher's recent-history window now unions across SMS + Telegram + iOS primaries, so cross-channel context continuity follows the user onto the iPhone.
+- Changed: `ChannelId` type widened to `"sms" | "tg" | "ios"`. `channelIdOf()` recognizes the `ios:` prefix. Narrow type casts in `interaction-agent.ts` widened to `ConversationId` since iOS-sourced turns now hit `send_ack` / browser-resume dispatch paths.
+- Rate limits (in-process, single-process server): pair/create 3 per IP per hour; pair/consume 20 per IP per hour. Pairing-code TTL: 10 min. Bearer-delivery pickup TTL: 10 min.
+- End-to-end verified via curl: pair create → dashboard consume → phone bearer pickup → authed inbound → SSE stream with delta/message → history persists to Convex → bad-bearer 401 → one-shot bearer delivery.
+- Upgrade note: the Xcode app that consumes these endpoints lives in a separate branch and is still in progress.
+
 ## Unreleased — Inbound file attachments
 
 - Added: **Telegram and iMessage (Sendblue) now accept inbound photos**

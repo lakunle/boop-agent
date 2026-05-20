@@ -20,6 +20,7 @@ import { ensureProactiveWatcher } from "./proactive-email.js";
 import { resolveActiveChannel } from "./runtime-config.js";
 import { preloadLocalModel } from "./embeddings.js";
 import { createMemoryRouter } from "./memory-routes.js";
+import { initApns } from "./apns.js";
 
 async function main() {
   await loadIntegrations();
@@ -27,6 +28,9 @@ async function main() {
   startAutomationLoop();
   startHeartbeatLoop();
   startConsolidationLoop();
+  // Bind APNs to the broadcast bus if APNS_* env vars are set. No-op
+  // (with one log line) otherwise — SSE still delivers in foreground.
+  initApns();
   // No-op when a paid embedding key is set; otherwise downloads/loads the
   // local BGE-large model in the background so the first user-facing
   // recall() doesn't pay the model-load cost.
@@ -136,6 +140,8 @@ async function main() {
     console.log(`  health      GET  http://localhost:${port}/health`);
     console.log(`  chat        POST http://localhost:${port}/chat`);
     console.log(`  sendblue    POST http://localhost:${port}/sendblue/webhook`);
+    console.log(`  ios inbound POST http://localhost:${port}/channels/ios/inbound`);
+    console.log(`  ios stream  GET  http://localhost:${port}/channels/ios/stream`);
     console.log(`  websocket   WS   ws://localhost:${port}/ws`);
   });
 

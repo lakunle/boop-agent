@@ -9,11 +9,13 @@ export default defineSchema({
     content: v.string(),
     agentId: v.optional(v.string()),
     turnId: v.optional(v.string()),
+    threadId: v.optional(v.id("threads")),
     createdAt: v.number(),
     attachments: attachmentsFieldValidator,
   })
     .index("by_conversation", ["conversationId"])
-    .index("by_conversation_turn", ["conversationId", "turnId"]),
+    .index("by_conversation_turn", ["conversationId", "turnId"])
+    .index("by_thread", ["threadId"]),
 
   conversations: defineTable({
     conversationId: v.string(),
@@ -351,6 +353,44 @@ export default defineSchema({
   // only ever sees ciphertext + nonce + auth tag. `username` is stored in
   // the clear so list views can show "which github account" without
   // forcing a decrypt.
+  // Authorization roster for iOS app instances paired with this boop.
+  // Not a user table — boop is single-user; a row here is just "this
+  // device may talk to this boop." Pairing flow: client posts a UUID,
+  // server returns a 6-digit code + expiry (hashed in the row). User
+  // pastes the code into the dashboard, which marks the device paired
+  // and issues a bearer token (also stored as a hash). Subsequent
+  // inbound HTTP + SSE auth via the bearer.
+  devices: defineTable({
+    deviceId: v.string(),
+    pairingCodeHash: v.optional(v.string()),
+    pairingExpiresAt: v.optional(v.number()),
+    paired: v.boolean(),
+    bearerTokenHash: v.optional(v.string()),
+    apnsDeviceToken: v.optional(v.string()),
+    /** "development" for TestFlight sandbox / "production" for App Store
+     *  / ad-hoc. Drives which Apple host the push helper targets. */
+    apnsEnvironment: v.optional(v.union(v.literal("development"), v.literal("production"))),
+    label: v.optional(v.string()),
+    pairedAt: v.optional(v.number()),
+    lastSeenAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_deviceId", ["deviceId"])
+    .index("by_pairing", ["pairingCodeHash"])
+    .index("by_bearer", ["bearerTokenHash"])
+    .index("by_apnsToken", ["apnsDeviceToken"]),
+
+  threads: defineTable({
+    deviceId: v.string(),
+    icon: v.optional(v.string()),       // e.g. "calendar", "lightbulb" — name in Lucide subset
+    label: v.optional(v.string()),      // optional human-readable label (M2; agent may also set this)
+    archived: v.boolean(),
+    createdAt: v.number(),
+    lastMessageAt: v.optional(v.number()),
+  })
+    .index("by_device", ["deviceId", "archived"])
+    .index("by_device_lastMessageAt", ["deviceId", "lastMessageAt"]),
+
   userCredentials: defineTable({
     label: v.string(),
     host: v.string(),

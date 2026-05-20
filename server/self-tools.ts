@@ -25,6 +25,35 @@ import {
   resolveTimezoneInput,
   setUserTimezone,
 } from "./timezone-config.js";
+import { convex } from "./convex-client.js";
+import { api } from "../convex/_generated/api.js";
+import { broadcast } from "./broadcast.js";
+
+// ---------- per-turn iOS thread context ----------
+// Set once per turn by the dispatcher; cleared in finally. Allows
+// set_thread_icon to stamp the current thread without the tool needing
+// the threadId in its own arguments, and to broadcast the icon update
+// back to the iOS stream using the same conversationId the SSE filter
+// is matching against.
+
+let currentTurnThreadId: string | null = null;
+let currentTurnConversationId: string | null = null;
+
+export function setCurrentTurnThreadId(threadId: string | null): void {
+  currentTurnThreadId = threadId;
+}
+
+export function setCurrentTurnConversationId(conversationId: string | null): void {
+  currentTurnConversationId = conversationId;
+}
+
+function getCurrentTurnThreadId(): string | null {
+  return currentTurnThreadId;
+}
+
+function getCurrentTurnConversationId(): string | null {
+  return currentTurnConversationId;
+}
 
 export function createSelfMcp() {
   return createSdkMcpServer({
@@ -150,25 +179,35 @@ this only affects unsolicited messages. Returns an error if the target
 channel is not configured or the user has not texted it yet.`,
         {
           channel: z
-            .enum(["sms", "tg", "imessage", "telegram"])
-            .describe('Channel to make active. "sms"/"imessage" and "tg"/"telegram" are aliases.'),
+            .enum(["sms", "tg", "ios", "imessage", "telegram", "iphone"])
+            .describe(
+              'Channel to make active. "sms"/"imessage", "tg"/"telegram", and "ios"/"iphone" are aliases.',
+            ),
         },
         async (args) => {
           const target = (args.channel === "imessage"
             ? "sms"
             : args.channel === "telegram"
               ? "tg"
-              : args.channel) as "sms" | "tg";
+              : args.channel === "iphone"
+                ? "ios"
+                : args.channel) as "sms" | "tg" | "ios";
 
           const channel = getChannelById(target);
           if (!channel || !channel.isConfigured()) {
+            const setupHint =
+              target === "tg"
+                ? "Set TELEGRAM_BOT_TOKEN in .env.local and restart."
+                : target === "ios"
+                  ? "Pair an iPhone from the Connections panel first."
+                  : "Set SENDBLUE_API_KEY in .env.local and restart.";
+            const channelName =
+              target === "tg" ? "Telegram" : target === "ios" ? "iOS" : "iMessage";
             return {
               content: [
                 {
                   type: "text" as const,
-                  text:
-                    `${target === "tg" ? "Telegram" : "iMessage"} is not configured on this server. ` +
-                    `Set ${target === "tg" ? "TELEGRAM_BOT_TOKEN" : "SENDBLUE_API_KEY"} in .env.local and restart.`,
+                  text: `${channelName} is not configured on this server. ${setupHint}`,
                 },
               ],
             };
@@ -176,16 +215,14 @@ channel is not configured or the user has not texted it yet.`,
 
           const primary = await getChannelPrimary(target);
           if (!primary) {
+            const hint =
+              target === "tg"
+                ? `I haven't received a message from you on Telegram yet. Text @${process.env.TELEGRAM_BOT_USERNAME ?? "<bot_username>"} once, then try again.`
+                : target === "ios"
+                  ? `No paired iPhone has texted yet. Open the Boop iOS app, send any message, then try again.`
+                  : `I haven't received a message from you on iMessage yet. Text the Boop number once, then try again.`;
             return {
-              content: [
-                {
-                  type: "text" as const,
-                  text:
-                    target === "tg"
-                      ? `I haven't received a message from you on Telegram yet. Text @${process.env.TELEGRAM_BOT_USERNAME ?? "<bot_username>"} once, then try again.`
-                      : `I haven't received a message from you on iMessage yet. Text the Boop number once, then try again.`,
-                },
-              ],
+              content: [{ type: "text" as const, text: hint }],
             };
           }
 
@@ -198,6 +235,56 @@ channel is not configured or the user has not texted it yet.`,
               },
             ],
           };
+        },
+      ),
+      tool(
+        "set_thread_icon",
+        `Pick the Lucide icon name that best represents the topic of the current
+   iOS thread. Call this ONCE per thread, on the first reply, before any
+   other text. Choose from the curated set:
+   calendar, clock, lightbulb, sparkles, search, telescope, mail,
+   message-circle, send, code, terminal, git-branch, briefcase, building,
+   file-text, shopping-cart, dollar-sign, credit-card, plane, map,
+   compass, book, book-open, bookmark, music, headphones, heart, smile,
+   dumbbell, salad, car, train-front, graduation-cap, phone-call, video,
+   utensils, coffee, list-todo, check-square, globe, languages, baby,
+   paw-print.
+   Only effective when the user is on iOS. Returns success or no-op.`,
+        {
+          icon: z.string().describe("One of the curated Lucide icon names."),
+        },
+        async (args) => {
+          const threadId = getCurrentTurnThreadId();
+          if (!threadId) {
+            return {
+              content: [{ type: "text" as const, text: "Not an iOS thread — no-op." }],
+            };
+          }
+          try {
+            await convex.mutation(api.threads.setIcon, {
+              threadId: threadId as any,
+              icon: args.icon,
+            });
+            const conversationId = getCurrentTurnConversationId();
+            if (conversationId) {
+              broadcast("thread_icon", {
+                conversationId,
+                threadId,
+                icon: args.icon,
+              });
+            }
+            return {
+              content: [
+                { type: "text" as const, text: `Thread icon set to ${args.icon}.` },
+              ],
+            };
+          } catch (err) {
+            return {
+              content: [
+                { type: "text" as const, text: `Failed to set thread icon: ${String(err)}` },
+              ],
+            };
+          }
         },
       ),
       tool(

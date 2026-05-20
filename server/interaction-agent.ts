@@ -8,11 +8,16 @@ import { extractAndStore } from "./memory/extract.js";
 import { availableIntegrations, describeIntegrations, spawnExecutionAgent } from "./execution-agent.js";
 import { createAutomationMcp } from "./automation-tools.js";
 import { createDraftDecisionMcp } from "./draft-tools.js";
-import { createSelfMcp } from "./self-tools.js";
+import {
+  createSelfMcp,
+  setCurrentTurnConversationId,
+  setCurrentTurnThreadId,
+} from "./self-tools.js";
 import { getRuntimeModel } from "./runtime-config.js";
 import { getChannelPrimary } from "./runtime-config.js";
 import { broadcast } from "./broadcast.js";
 import { dispatch } from "./channels/index.js";
+import type { ConversationId } from "./channels/types.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
 
 const INTERACTION_SYSTEM = `You are Boop, a personal agent the user texts from iMessage.
@@ -194,18 +199,40 @@ before saving.
 
 Available integrations for spawn_agent: {{INTEGRATIONS}}
 
+Threads (iOS only):
+The user may have multiple threads open at once on iOS. Each thread is its own
+chat with its own message history; user memories (recall/write_memory) are
+shared across all threads.
+
+When you reply for the FIRST TIME in a brand-new thread (no prior assistant
+messages in this conversation), call set_thread_icon with one Lucide icon
+name that captures the thread's topic. Call it BEFORE your first text reply.
+Example: user says "what's on my calendar?" → call set_thread_icon({"icon":"calendar"}),
+then reply.
+
+Skip this on subsequent turns. Skip it on non-iOS channels (no-op anyway).
+
 Format: Plain iMessage-friendly text. Markdown sparingly. Keep replies under ~400 chars when you can.`;
 
 interface HandleOpts {
   conversationId: string;
   content: string;
   attachments?: Doc<"messages">["attachments"];
+  threadId?: string;
   turnTag?: string;
   onThinking?: (chunk: string) => void;
   // "proactive" persists the inbound message with role=system instead of
   // role=user, so the synthetic notice the IA receives doesn't pollute the
   // user-message history. Defaults to "user".
   kind?: "user" | "proactive";
+  precomputedUserMessageId?: string;
+  /**
+   * When the calling channel pre-persists the user message (iOS /inbound),
+   * it must also generate the turnId so assistant messages in this turn
+   * are grouped under the same key. Pass that id here and handleUserMessage
+   * will use it instead of generating its own.
+   */
+  precomputedTurnId?: string;
 }
 
 function randomId(prefix: string): string {
@@ -213,21 +240,52 @@ function randomId(prefix: string): string {
 }
 
 export async function handleUserMessage(opts: HandleOpts): Promise<string> {
-  const turnId = randomId("turn");
+  // When the iOS route pre-persists the user message, it generates its own
+  // turnId so that the user message row and all subsequent assistant rows in
+  // this turn share the same grouping key. Use it if provided; otherwise
+  // generate a fresh id (all other channels take this path).
+  const turnId = opts.precomputedTurnId ?? randomId("turn");
   const integrations = availableIntegrations();
 
   const inboundRole = opts.kind === "proactive" ? "system" : "user";
-  await convex.mutation(api.messages.send, {
-    conversationId: opts.conversationId,
-    role: inboundRole,
-    content: opts.content,
-    attachments: opts.attachments,
-    turnId,
-  });
-  broadcast(opts.kind === "proactive" ? "proactive_notice" : "user_message", {
-    conversationId: opts.conversationId,
-    content: opts.content,
-  });
+
+  // Proactive turns must never be paired with precomputedUserMessageId: the
+  // role the route used when persisting would be "user", but proactive turns
+  // need "system". Catch this early rather than silently writing the wrong role.
+  if (opts.precomputedUserMessageId && opts.kind === "proactive") {
+    throw new Error(
+      "precomputedUserMessageId is only valid for direct user turns — proactive turns must let handleUserMessage do its own persist + broadcast",
+    );
+  }
+
+  // Latent trap: if the caller pre-persisted the user message but also
+  // supplied attachments, those attachments would be silently dropped here
+  // because the persist block below is skipped. iOS /inbound doesn't accept
+  // attachments yet, so this is safe today — but warn loudly if it ever fires.
+  if (opts.precomputedUserMessageId && opts.attachments && opts.attachments.length > 0) {
+    console.warn(
+      "[turn] precomputedUserMessageId set but attachments[] present — caller must persist attachments themselves",
+      { conversationId: opts.conversationId, count: opts.attachments.length },
+    );
+  }
+
+  // Skip the persist + broadcast when the calling channel already did
+  // them (currently only iOS, so it can return the userMessageId to the
+  // client synchronously from /inbound).
+  if (!opts.precomputedUserMessageId) {
+    await convex.mutation(api.messages.send, {
+      conversationId: opts.conversationId,
+      role: inboundRole,
+      content: opts.content,
+      attachments: opts.attachments,
+      turnId,
+      ...(opts.threadId ? { threadId: opts.threadId as any } : {}),
+    });
+    broadcast(opts.kind === "proactive" ? "proactive_notice" : "user_message", {
+      conversationId: opts.conversationId,
+      content: opts.content,
+    });
+  }
 
   // Phase 4 intercept: if there's a recently-parked browser session for this
   // conversation, the user's reply is the answer to its pending question.
@@ -273,10 +331,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
       });
 
       const reply = res.result || "(resume agent returned no output)";
-      await dispatch(
-        opts.conversationId as `sms:${string}` | `tg:${string}`,
-        reply,
-      );
+      await dispatch(opts.conversationId as ConversationId, reply);
       await convex.mutation(api.messages.send, {
         conversationId: opts.conversationId,
         role: "assistant",
@@ -320,7 +375,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           // two iMessages (the ack + the final reply). Still persist + log
           // so the debug UI sees it.
           if (opts.kind !== "proactive") {
-            await dispatch(opts.conversationId as `sms:${string}` | `tg:${string}`, text);
+            await dispatch(opts.conversationId as ConversationId, text);
           }
           await convex.mutation(api.messages.send, {
             conversationId: opts.conversationId,
@@ -380,6 +435,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   const channelPrimaries = await Promise.all([
     getChannelPrimary("sms"),
     getChannelPrimary("tg"),
+    getChannelPrimary("ios"),
   ]);
   const conversationIds = Array.from(
     new Set(
@@ -413,6 +469,9 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   const requestedModel = await getRuntimeModel();
   let reply = "";
   let usage: UsageTotals = { ...EMPTY_USAGE };
+  let deltaSeq = 0;
+  setCurrentTurnThreadId(opts.threadId ?? null);
+  setCurrentTurnConversationId(opts.threadId ? opts.conversationId : null);
   try {
     for await (const msg of query({
       prompt,
@@ -446,6 +505,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           "mcp__boop-self__list_integrations",
           "mcp__boop-self__search_composio_catalog",
           "mcp__boop-self__inspect_toolkit",
+          "mcp__boop-self__set_thread_icon",
         ],
         // Belt-and-suspenders: even with bypassPermissions the SDK can leak
         // its built-ins if we only whitelist. Explicitly block them on the
@@ -476,6 +536,11 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           if (block.type === "text") {
             reply += block.text;
             opts.onThinking?.(block.text);
+            broadcast("assistant_delta", {
+              conversationId: opts.conversationId,
+              delta: block.text,
+              seq: deltaSeq++,
+            });
           } else if (block.type === "tool_use") {
             const name = block.name.replace(/^mcp__boop-[a-z-]+__/, "");
             const inputPreview = JSON.stringify(block.input);
@@ -491,6 +556,9 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   } catch (err) {
     console.error(`[turn ${tag}] query failed`, err);
     reply = "Sorry — I hit an error processing that. Try again in a moment.";
+  } finally {
+    setCurrentTurnThreadId(null);
+    setCurrentTurnConversationId(null);
   }
 
   // Sometimes the model produces a placeholder string like "(no output)" or
