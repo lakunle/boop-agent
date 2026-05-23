@@ -15,12 +15,7 @@ test("voice source appends voice-mode addendum", () => {
   assert.match(prompt, /No bullet lists/);
 });
 
-test("undefined source omits voice addendum", () => {
-  const prompt = buildSystemPrompt({});
-  assert.doesNotMatch(prompt, /text-to-speech/);
-});
-
-test("sms source omits voice addendum", () => {
-  const prompt = buildSystemPrompt({ source: undefined });
-  assert.doesNotMatch(prompt, /text-to-speech/);
+test("absent or undefined source omits voice addendum", () => {
+  assert.doesNotMatch(buildSystemPrompt({}), /text-to-speech/);
+  assert.doesNotMatch(buildSystemPrompt({ source: undefined }), /text-to-speech/);
 });
