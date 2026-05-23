@@ -395,12 +395,19 @@ export function createIosRouter(): Router {
 
   // POST /inbound — authed.
   router.post("/inbound", requireBearer, async (req: AuthedRequest, res) => {
-    const { text, threadId } = (req.body ?? {}) as { text?: string; threadId?: string };
+    const body = req.body ?? {};
+    const { text, threadId } = body as { text?: string; threadId?: string };
     if (!text || typeof text !== "string") {
       res.status(400).json({ error: "text required" });
       return;
     }
     const deviceId = req.deviceId!;
+
+    const source = body.source === "voice" ? ("voice" as const) : undefined;
+    const voiceTurnId =
+      typeof body.voiceTurnId === "string" && body.voiceTurnId.length > 0
+        ? body.voiceTurnId
+        : undefined;
 
     let effectiveThreadId = threadId;
     if (!effectiveThreadId) {
@@ -444,6 +451,8 @@ export function createIosRouter(): Router {
       threadId: effectiveThreadId,
       precomputedUserMessageId: userMessageId,
       precomputedTurnId: turnId,
+      source,
+      voiceTurnId,
     }).catch((err) => console.error("[ios] runTurn failed", err));
 
     res.json({ ok: true, conversationId, threadId: effectiveThreadId, userMessageId });
