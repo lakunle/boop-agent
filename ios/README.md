@@ -117,3 +117,59 @@ xcodegen generate --quiet
 ```
 
 CI builds (if you set them up): use the same command, then `xcodebuild -project Boop.xcodeproj -scheme Boop -destination 'generic/platform=iOS Simulator' build`.
+
+## Voice mode (M2)
+
+Tap the mic icon on the dock to open voice mode — a dedicated full-screen
+sheet that lets you talk to boop hands-free with AirPods. On-device
+SFSpeechRecognizer transcribes your voice; the agent's reply streams back
+through ElevenLabs TTS (or AVSpeechSynthesizer as a fallback).
+
+### Server-side setup
+
+Set in `.env`:
+
+- `ELEVENLABS_API_KEY` — optional. If unset, voice mode falls back to
+  `AVSpeechSynthesizer` on-device (lower quality but free).
+- `ELEVENLABS_VOICE_ID` — default `9BWtsMINqrJLrRacOk9x` ("Aria").
+- `ELEVENLABS_MODEL_ID` — default `eleven_flash_v2_5` (~75ms first-byte).
+
+### iOS permissions
+
+First-tap of the dock mic shows a permissions card. Tap Allow to grant:
+- Microphone (so boop can hear you)
+- Speech Recognition (on-device, never leaves the phone)
+
+### Lottie animations (manual setup)
+
+Voice mode uses three Lottie animations for the orb states. Download
+candidates from <https://lottiefiles.com/free-animations/ai> and drop
+them into `ios/Boop/Resources/lottie/` as:
+
+- `listening.json` — calm pulse (e.g., [Pulse by Ran Shani](https://lottiefiles.com/free-animation/pulse-1vCzxDzHrN))
+- `thinking.json` — purpose-built thinking loader (e.g., [Simple loading & AI thinking by Sander](https://lottiefiles.com/free-animation/simple-loading-ai-thinking-O283a21B9W))
+- `speaking.json` — voice waveform (e.g., [Voice line / wave](https://lottiefiles.com/84628-voice-line-wave-animation))
+
+If the layer name driving the orb tint isn't `orb-fill.Fill 1.Color`, edit
+the keypath in `ios/Boop/Views/Components/LottieView.swift` to match.
+
+Without these files the orb shows a static SF Symbol per state — voice
+mode still works.
+
+### Smoke checklist (per release)
+
+- [ ] First-tap dock mic shows permission card; Allow → orb screen.
+- [ ] Permissions denied → Settings deep-link card.
+- [ ] Speak "hello" → orb transitions listening → thinking → speaking → listening.
+- [ ] First audio audible ≤ 1.5s after silence (ElevenLabs path).
+- [ ] Continuous loop: mic re-arms automatically after assistant finishes.
+- [ ] Mute control toggles correctly.
+- [ ] Tap orb during Speaking → audio cuts, mic re-arms after ~150ms.
+- [ ] Tap ⌨ during Listening → exit; latest partial transcript in dock composer.
+- [ ] Pull AirPods mid-Speaking → fade over ~300ms, paused.
+- [ ] Phone call mid-session → auto-pause; after call → auto-resume.
+- [ ] Backgrounded → current sentence finishes; foregrounded → resumes Listening.
+- [ ] `ELEVENLABS_API_KEY` unset on server → AVSpeech fallback works.
+- [ ] Voice turns appear in the chat thread after sheet closed.
+
+For local dev with fallback path: `ELEVENLABS_API_KEY= npm run dev:server`.

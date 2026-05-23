@@ -141,6 +141,14 @@ Rationale: matches the ambitious scope chosen in D2 ("all three"), each mileston
 - Hold the button, speak, release: agent replies in text + optional speech.
 - Latency from speech-end to first token under 2 seconds (Speech.framework on-device + streaming agent).
 
+**Status (2026-05-23):** Implemented per spec at
+`docs/superpowers/specs/2026-05-23-ios-voice-m2-design.html`. Plan at
+`docs/superpowers/plans/2026-05-23-ios-voice-m2-plan.html`. Continuous-
+loop hands-free conversation, ElevenLabs streaming TTS with AVSpeech
+fallback, Lottie orb states (animations downloaded manually post-merge),
+on-device VAD. Barge-in deferred to M2.5. See `ios/README.md` for the
+release smoke checklist.
+
 ### M3 — Share extension (do-something-with-this, 2 weekends)
 
 **iOS-side**
