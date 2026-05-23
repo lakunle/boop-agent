@@ -25,7 +25,7 @@
     "deploy:convex": "convex deploy",
     "convex:selfhost": "node scripts/convex-selfhost.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",

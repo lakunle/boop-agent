@@ -26,22 +26,32 @@ export function createTtsSidecar(opts: TtsSidecarOpts): TtsSidecar {
   let fallbackBuffer = "";
   let emittedDone = false;
 
+  // Fix 1+2: track every sentence sent to ElevenLabs this turn so that a
+  // mid-turn error can reroute them all to fallbackBuffer (not just sentence #1).
+  // Once midTurnFailed is set, all subsequent sentences skip ElevenLabs entirely.
+  const sentencesInFlight: string[] = [];
+  let midTurnFailed = false;
+
+  // Fix 3: guard every emit helper so that after dispose() no events escape.
   function emitChunk(audioBase64: string) {
+    if (disposed) return;
     broadcast("tts_chunk", { conversationId, voiceTurnId, seq: seq++, audio: audioBase64, mime: "audio/mpeg" });
   }
 
   function emitDone() {
-    if (emittedDone) return;
+    if (disposed || emittedDone) return;
     emittedDone = true;
     broadcast("tts_done", { conversationId, voiceTurnId });
   }
 
   function emitLocalFallback(text: string) {
+    if (disposed) return;
     broadcast("tts_use_local", { conversationId, voiceTurnId, text: stripMarkdown(text) });
     emitDone();
   }
 
   function emitError(reason: string) {
+    if (disposed) return;
     broadcast("tts_error", { conversationId, voiceTurnId, reason });
   }
 
@@ -49,7 +59,9 @@ export function createTtsSidecar(opts: TtsSidecarOpts): TtsSidecar {
     maxBufferMs: 1500,
     onSentence: (sentence) => {
       if (disposed) return;
-      if (useFallback) {
+      // Fix 2: once midTurnFailed, route all remaining sentences to fallback —
+      // do NOT re-open an ElevenLabs stream.
+      if (useFallback || midTurnFailed) {
         fallbackBuffer += (fallbackBuffer ? " " : "") + sentence;
         return;
       }
@@ -61,13 +73,19 @@ export function createTtsSidecar(opts: TtsSidecarOpts): TtsSidecar {
           onChunk: (audio) => emitChunk(audio),
           onDone: () => emitDone(),
           onError: (reason) => {
-            // WS failed mid-turn — fall back with remaining text
+            // Fix 1: set sticky flag and dump ALL in-flight sentences (not just
+            // the closure-captured first one) into fallbackBuffer.
             emitError(reason);
+            midTurnFailed = true;
             elevenlabs = null;
-            fallbackBuffer += (fallbackBuffer ? " " : "") + sentence;
+            for (const s of sentencesInFlight) {
+              fallbackBuffer += (fallbackBuffer ? " " : "") + s;
+            }
+            sentencesInFlight.length = 0;
           },
         });
       }
+      sentencesInFlight.push(sentence);
       elevenlabs.send(sentence);
     },
   });
@@ -83,6 +101,7 @@ export function createTtsSidecar(opts: TtsSidecarOpts): TtsSidecar {
       if (useFallback && fallbackBuffer) {
         emitLocalFallback(fallbackBuffer);
       } else if (elevenlabs) {
+        // Fix 3: the .then() continuation checks disposed before emitting.
         elevenlabs.end().then(() => emitDone());
       } else if (fallbackBuffer) {
         // Fallback buffer accrued because the ElevenLabs path errored mid-turn

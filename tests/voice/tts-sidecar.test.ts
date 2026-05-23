@@ -56,3 +56,19 @@ test("ignores events for other conversationId", async () => {
   unsub();
   assert.equal(events.length, 0);
 });
+
+test("dispose() does not emit tts_done after disposal", async () => {
+  const { events, unsub } = collectEvents((e) => e === "tts_done");
+  const sidecar = createTtsSidecar({
+    conversationId: "ios:dev:disposeRace",
+    voiceTurnId: "vt-race",
+    config: { apiKey: "", voiceId: "v", modelId: "eleven_flash_v2_5" },
+  });
+  // Dispose BEFORE assistant_message arrives. Then send assistant_message
+  // — sidecar should ignore it because it's unsubscribed.
+  sidecar.dispose();
+  broadcast("assistant_message", { conversationId: "ios:dev:disposeRace", message: "ignore me" });
+  await new Promise((r) => setTimeout(r, 30));
+  unsub();
+  assert.equal(events.length, 0, "no tts_done after dispose");
+});
