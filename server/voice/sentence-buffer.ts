@@ -65,6 +65,7 @@ export function createSentenceBuffer(opts: SentenceBufferOpts): SentenceBuffer {
   const { onSentence, maxBufferMs } = opts;
   let buffer = "";
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let disposed = false;
 
   function armTimer() {
     if (maxBufferMs == null) return;
@@ -83,6 +84,7 @@ export function createSentenceBuffer(opts: SentenceBufferOpts): SentenceBuffer {
   }
 
   function flush() {
+    if (disposed) return;
     clearTimer();
     if (buffer.trim().length === 0) {
       buffer = "";
@@ -94,6 +96,7 @@ export function createSentenceBuffer(opts: SentenceBufferOpts): SentenceBuffer {
   }
 
   function push(chunk: string) {
+    if (disposed) return;
     buffer += chunk;
     armTimer();
 
@@ -105,6 +108,8 @@ export function createSentenceBuffer(opts: SentenceBufferOpts): SentenceBuffer {
   }
 
   function dispose() {
+    if (disposed) return;
+    disposed = true;
     clearTimer();
     buffer = "";
   }

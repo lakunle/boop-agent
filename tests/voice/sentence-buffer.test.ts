@@ -55,3 +55,18 @@ test("force-flushes after maxBufferMs of inactivity", async () => {
   assert.deepEqual(out, ["no terminator here"]);
   buf.dispose();
 });
+
+test("push after dispose is a no-op", () => {
+  const out: string[] = [];
+  const buf = createSentenceBuffer({ onSentence: (s) => out.push(s) });
+  buf.dispose();
+  buf.push("Hello world. ");
+  buf.flush();
+  assert.deepEqual(out, []);
+});
+
+test("dispose is idempotent", () => {
+  const buf = createSentenceBuffer({ onSentence: () => {} });
+  buf.dispose();
+  buf.dispose(); // should not throw or double-emit
+});
