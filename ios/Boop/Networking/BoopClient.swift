@@ -59,12 +59,25 @@ struct BoopClient {
 
     // MARK: - Authed
 
-    func sendInbound(text: String, threadId: String) async throws -> InboundResponse {
-        try await postJSON(
+    func sendInbound(
+        text: String,
+        threadId: String,
+        source: String? = nil,
+        voiceTurnId: String? = nil
+    ) async throws -> InboundResponse {
+        var body: [String: Any] = ["text": text, "threadId": threadId]
+        if let source { body["source"] = source }
+        if let voiceTurnId { body["voiceTurnId"] = voiceTurnId }
+        return try await postJSON(
             path: "/channels/ios/inbound",
-            body: ["text": text, "threadId": threadId],
+            body: body,
             authorized: true,
         )
+    }
+
+    func streamSSE(threadId: String) -> SSEConnection? {
+        guard let bearer else { return nil }
+        return SSEConnection(baseURL: baseURL, bearer: bearer, threadId: threadId)
     }
 
     func fetchMessages(threadId: String, limit: Int = 50) async throws -> MessagesResponse {

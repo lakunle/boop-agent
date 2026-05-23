@@ -31,21 +31,28 @@ struct VoiceModeSheet: View {
         }
         .preferredColorScheme(.dark)
         .task { await checkOrPromptPermissions() }
-        .onDisappear { store.exit() }
+        .onDisappear { Task { await store.exit() } }
     }
 
     private func checkOrPromptPermissions() async {
         let status = VoicePermissions.current()
         switch status {
-        case .granted: store.state = .listening
-        case .denied: store.state = .permissionDenied
-        case .notDetermined: store.state = .permissionPending
+        case .granted:
+            await store.enter()
+        case .denied:
+            store.state = .permissionDenied
+        case .notDetermined:
+            store.state = .permissionPending
         }
     }
 
     private func requestPermissions() async {
         let status = await VoicePermissions.request()
-        store.state = (status == .granted) ? .listening : .permissionDenied
+        if status == .granted {
+            await store.enter()
+        } else {
+            store.state = .permissionDenied
+        }
     }
 
     private var header: some View {
@@ -69,14 +76,42 @@ struct VoiceModeSheet: View {
 
     @ViewBuilder
     private var orb: some View {
-        // Placeholder until Task 18 wires Lottie + state-driven animations.
-        Circle()
-            .fill(RadialGradient(
-                colors: [threadTint, threadTint.opacity(0.4)],
-                center: .center, startRadius: 20, endRadius: 90))
-            .frame(width: 160, height: 160)
-            .shadow(color: threadTint.opacity(0.4), radius: 60)
-            .accessibilityIdentifier("voice.orb")
+        switch store.state {
+        case .listening:
+            LottieOrbView(name: "listening", tint: threadTint)
+                .frame(width: 160, height: 160)
+                .accessibilityIdentifier("voice.orb")
+        case .thinking:
+            LottieOrbView(name: "thinking", tint: threadTint)
+                .frame(width: 160, height: 160)
+                .accessibilityIdentifier("voice.orb")
+        case .speaking:
+            LottieOrbView(name: "speaking", tint: threadTint)
+                .frame(width: 160, height: 160)
+                .onTapGesture { Task { await store.skipSpeaking() } }
+                .accessibilityIdentifier("voice.orb")
+        case .paused:
+            Circle().fill(Color.gray.opacity(0.2))
+                .overlay(
+                    Image(systemName: "pause.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: 32))
+                )
+                .frame(width: 160, height: 160)
+                .accessibilityIdentifier("voice.orb")
+        case .error:
+            Circle().fill(Color.red.opacity(0.2))
+                .overlay(
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 32))
+                )
+                .frame(width: 160, height: 160)
+                .accessibilityIdentifier("voice.orb")
+        case .permissionPending, .permissionDenied:
+            Color.clear.frame(width: 160, height: 160)
+                .accessibilityIdentifier("voice.orb")
+        }
     }
 
     private var subtitle: some View {

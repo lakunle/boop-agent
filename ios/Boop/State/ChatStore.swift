@@ -73,6 +73,10 @@ final class ChatStore {
     }
 
     var isReady: Bool { bearer != nil }
+    /// The current bearer token; nil when not paired. Used by the voice
+    /// store to construct a BoopClient without duplicating the settings
+    /// reference.
+    var currentBearer: String? { bearer }
 
     func bind(bearer: String) { self.bearer = bearer }
 

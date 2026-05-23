@@ -11,10 +11,10 @@ import SwiftUI
 struct Dock: View {
     @Environment(ThreadsStore.self) private var threads
     @Environment(ChatStore.self) private var chat
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAttachPicker = false
     @State private var showVoiceMode = false
-    @State private var voiceStore = VoiceModeStore()
     @Binding var draft: String
     var onSend: (String) -> Void
     @FocusState private var composerFocused: Bool
@@ -41,6 +41,19 @@ struct Dock: View {
             let thread = activeThread
             let tint = thread.map { ThreadTint.forThreadId($0.id).solid } ?? ThreadTint.sky.solid
             let name = thread?.label ?? "Thread"
+            let tid = thread?.id ?? ""
+            let cid = "ios:\(settings.deviceId):\(tid)"
+            let voiceClient = settings.serverBaseURL.map {
+                BoopClient(baseURL: $0, bearer: chat.currentBearer)
+            }
+            let voiceStore = VoiceModeStore(
+                client: voiceClient ?? BoopClient(
+                    baseURL: URL(string: "http://localhost:3456")!,
+                    bearer: chat.currentBearer
+                ),
+                conversationId: cid,
+                threadId: tid
+            )
             VoiceModeSheet(
                 store: voiceStore,
                 threadTint: tint,
