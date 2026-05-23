@@ -1,0 +1,2900 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2 — Voice — Implementation Plan</title>
+  <style>
+    :root {
+      --bg: #fafaf9; --bg-elev: #fff; --surface: #f4f4f2;
+      --border: #e5e5e0; --border-strong: #d4d4ce;
+      --text: #1c1c1a; --text-soft: #4a4a46; --text-dim: #6b6b65;
+      --accent: #0a84ff; --accent-soft: rgba(10,132,255,.1);
+      --good: #16a34a; --warn: #d97706; --bad: #dc2626; --info: #6366f1;
+      --code-bg: #0f1419; --code-text: #e6e1cf;
+      --kw: #ff9d45; --str: #b8cc52; --num: #f29718;
+      --com: #5c6773; --pun: #cbccc6; --type: #59c2ff; --func: #ffb454;
+    }
+    html[data-theme="dark"] {
+      --bg: #0f0f0e; --bg-elev: #18181a; --surface: #1c1c1e;
+      --border: #2a2a2c; --border-strong: #3a3a3c;
+      --text: #f0efea; --text-soft: #c8c7c1; --text-dim: #8e8e93;
+      --accent: #5e9eff; --accent-soft: rgba(94,158,255,.14);
+      --good: #4ade80; --warn: #fbbf24; --bad: #f87171; --info: #a5b4fc;
+    }
+    * { box-sizing: border-box }
+    html { scroll-behavior: smooth; scroll-padding-top: 80px }
+    body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif; background: var(--bg); color: var(--text); line-height: 1.62; font-size: 15px; -webkit-font-smoothing: antialiased }
+    header.bar { position: sticky; top: 0; z-index: 50; background: var(--bg-elev); border-bottom: 1px solid var(--border); backdrop-filter: blur(8px); padding: 14px 24px; display: flex; align-items: center; gap: 16px }
+    header.bar h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em }
+    header.bar .meta { color: var(--text-dim); font-size: 13px; flex: 1 }
+    header.bar .controls { display: flex; gap: 8px }
+    button.btn { background: transparent; border: 1px solid var(--border-strong); color: var(--text-soft); padding: 5px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; cursor: pointer; transition: all .15s ease }
+    button.btn:hover { background: var(--surface); color: var(--text) }
+    .shell { display: grid; grid-template-columns: 280px 1fr; max-width: 1280px; margin: 0 auto; gap: 32px; padding: 24px }
+    @media (max-width: 900px) { .shell { grid-template-columns: 1fr; padding: 16px } aside.toc { position: static; max-height: none } }
+    aside.toc { position: sticky; top: 80px; align-self: start; max-height: calc(100vh - 100px); overflow-y: auto; padding: 8px; font-size: 13px }
+    aside.toc h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); margin: 8px 8px 12px; font-weight: 600 }
+    aside.toc .phase { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); margin: 12px 8px 6px; font-weight: 600 }
+    aside.toc ol { list-style: none; padding: 0; margin: 0 }
+    aside.toc a { display: block; padding: 5px 10px 5px 38px; color: var(--text-soft); text-decoration: none; border-radius: 6px; position: relative; line-height: 1.4; font-size: 12.5px }
+    aside.toc a .tno { position: absolute; left: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 11px; top: 6px; width: 24px; text-align: right }
+    aside.toc a:hover { background: var(--surface); color: var(--text) }
+    aside.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 500 }
+    main { max-width: 880px }
+    h1.doctitle { font-size: 30px; letter-spacing: -.02em; margin: 8px 0 4px; font-weight: 700 }
+    .subtitle { color: var(--text-dim); font-size: 15px; margin: 0 0 8px }
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 32px }
+    .chip { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: var(--surface); color: var(--text-soft); border: 1px solid var(--border); font-weight: 500 }
+    .chip.ok { color: var(--good); border-color: var(--good); background: transparent }
+    .chip.warn { color: var(--warn); border-color: var(--warn); background: transparent }
+    .chip.info { color: var(--info); border-color: var(--info); background: transparent }
+    h2.phase-h { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; margin: 48px 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border) }
+    section.task { margin: 0 0 40px; scroll-margin-top: 72px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev); overflow: hidden }
+    section.task > .task-h { padding: 16px 20px; display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--border); background: var(--surface) }
+    section.task > .task-h .tn { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; min-width: 60px }
+    section.task > .task-h h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; flex: 1 }
+    section.task > .task-h .anchor { color: var(--text-dim); text-decoration: none; opacity: 0; transition: opacity .15s ease; font-weight: 400; font-size: 14px }
+    section.task > .task-h:hover .anchor { opacity: 1 }
+    section.task > .task-body { padding: 16px 20px 20px }
+    .files { background: var(--surface); border-radius: 6px; padding: 10px 14px; margin: 4px 0 14px; font-size: 13px; font-family: ui-monospace,monospace }
+    .files .kind { color: var(--text-dim); margin-right: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em }
+    .files .kind.create { color: var(--good) }
+    .files .kind.modify { color: var(--warn) }
+    .files .kind.test { color: var(--info) }
+    .files div { padding: 2px 0 }
+    .step { margin: 14px 0; padding: 0 0 14px; border-bottom: 1px solid var(--border) }
+    .step:last-child { border-bottom: none }
+    .step > .step-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-weight: 500 }
+    .step > .step-head .cb { font-family: ui-monospace,monospace; color: var(--text-dim); user-select: all }
+    .step > .step-head .sn { color: var(--text-dim); font-size: 12px; min-width: 50px }
+    code.inline { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: .88em; background: var(--surface); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--text) }
+    pre { background: var(--code-bg); color: var(--code-text); padding: 14px; border-radius: 6px; overflow-x: auto; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 12.5px; line-height: 1.6; margin: 8px 0 }
+    pre.lang-bash { color: #e6e1cf }
+    pre code { font-family: inherit }
+    .tok-kw { color: var(--kw); font-weight: 500 }
+    .tok-str { color: var(--str) } .tok-num { color: var(--num) }
+    .tok-com { color: var(--com); font-style: italic } .tok-pun { color: var(--pun) }
+    .tok-type { color: var(--type) } .tok-func { color: var(--func) }
+    .expect { font-size: 12.5px; color: var(--text-dim); padding: 6px 10px; background: var(--surface); border-left: 2px solid var(--good); border-radius: 0 4px 4px 0; margin: 6px 0 }
+    .expect.bad { border-color: var(--bad) }
+    .expect b { color: var(--text) }
+    .callout { padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 13.5px }
+    .callout.warn { border-color: var(--warn); background: rgba(217,119,6,.07) }
+    .callout .head { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; font-weight: 600 }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px }
+    th,td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top }
+    th { color: var(--text-dim); font-weight: 500; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; background: var(--surface) }
+    a { color: var(--accent); text-decoration: none } a:hover { text-decoration: underline }
+    footer.foot { max-width: 880px; padding: 32px 0 64px; color: var(--text-dim); font-size: 12px; border-top: 1px solid var(--border); margin-top: 48px }
+    .req { padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; font-size: 14px }
+    .req strong { font-weight: 600 }
+  </style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>M2 — Voice · Plan</h1>
+  <span class="meta">Boop iOS · implementation plan · 2026-05-23 · <code class="inline" style="font-size:11px">feat/ios-channel</code></span>
+  <div class="controls">
+    <button class="btn" id="themeToggle">Theme</button>
+  </div>
+</header>
+
+<div class="shell">
+
+<aside class="toc">
+  <h2>Phases</h2>
+  <div class="phase">1 · Server foundation</div>
+  <ol>
+    <li><a href="#task-1"><span class="tno">T1</span>Source flag on ParsedInbound</a></li>
+    <li><a href="#task-2"><span class="tno">T2</span>Voice system prompt addendum</a></li>
+    <li><a href="#task-3"><span class="tno">T3</span>POST /inbound voice fields</a></li>
+  </ol>
+  <div class="phase">2 · Voice pipeline</div>
+  <ol>
+    <li><a href="#task-4"><span class="tno">T4</span>SentenceBuffer</a></li>
+    <li><a href="#task-5"><span class="tno">T5</span>markdown-strip</a></li>
+    <li><a href="#task-6"><span class="tno">T6</span>ElevenLabs WS adapter</a></li>
+    <li><a href="#task-7"><span class="tno">T7</span>TtsSidecar orchestrator</a></li>
+  </ol>
+  <div class="phase">3 · Wire-up + env</div>
+  <ol>
+    <li><a href="#task-8"><span class="tno">T8</span>Wire sidecar into interaction-agent</a></li>
+    <li><a href="#task-9"><span class="tno">T9</span>ENV vars + .env.example</a></li>
+    <li><a href="#task-10"><span class="tno">T10</span>e2e-voice integration test</a></li>
+  </ol>
+  <div class="phase">4 · iOS foundation</div>
+  <ol>
+    <li><a href="#task-11"><span class="tno">T11</span>Lottie SPM + LottieView</a></li>
+    <li><a href="#task-12"><span class="tno">T12</span>VoiceModeSheet skeleton</a></li>
+    <li><a href="#task-13"><span class="tno">T13</span>VoicePermissionsCard</a></li>
+  </ol>
+  <div class="phase">5 · iOS audio</div>
+  <ol>
+    <li><a href="#task-14"><span class="tno">T14</span>VoiceSession + AVAudioSession</a></li>
+    <li><a href="#task-15"><span class="tno">T15</span>SFSpeechRecognizer + VAD</a></li>
+    <li><a href="#task-16"><span class="tno">T16</span>SSEClient tts_* events</a></li>
+    <li><a href="#task-17"><span class="tno">T17</span>AudioQueue actor</a></li>
+  </ol>
+  <div class="phase">6 · iOS UX</div>
+  <ol>
+    <li><a href="#task-18"><span class="tno">T18</span>State machine + Lottie</a></li>
+    <li><a href="#task-19"><span class="tno">T19</span>Controls + Reduce Motion</a></li>
+  </ol>
+  <div class="phase">7 · Ship</div>
+  <ol>
+    <li><a href="#task-20"><span class="tno">T20</span>Smoke + docs</a></li>
+    <li><a href="#task-21"><span class="tno">T21</span>Bump version + TestFlight</a></li>
+  </ol>
+</aside>
+
+<main>
+
+<h1 class="doctitle">M2 — Voice — Implementation Plan</h1>
+<p class="subtitle">21 tasks across 7 phases. Each task is independently committable. Phases 1–3 + 4–6 can run in parallel worktrees per the spec's <a href="../specs/2026-05-23-ios-voice-m2-design.html">lane-A / lane-B split</a>.</p>
+<div class="doc-meta">
+  <span class="chip info">milestone M2</span>
+  <span class="chip">3 weekends</span>
+  <span class="chip">TDD where applicable</span>
+  <span class="chip">21 tasks</span>
+</div>
+
+<div class="req">
+  <strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use <code class="inline">superpowers:subagent-driven-development</code> (recommended) or <code class="inline">superpowers:executing-plans</code> to implement this plan task-by-task. Steps use checkbox (<code class="inline">- [ ]</code>) syntax for tracking; the literal text is preserved in the HTML source so grep-based plan parsers continue to work.
+</div>
+
+<div class="callout">
+  <div class="head">Goal</div>
+  Ship a dedicated voice-mode screen for the Boop iOS app: hold-free continuous-loop conversation with on-device transcription, server-streamed TTS via ElevenLabs (with AVSpeech fallback), persisting turns to the currently-active thread.
+</div>
+
+<div class="callout">
+  <div class="head">Architecture</div>
+  Server adds <code class="inline">server/voice/</code> — a sentence-buffer reads <code class="inline">assistant_delta</code> tokens off the existing <code class="inline">broadcast()</code> bus, ships each completed sentence to ElevenLabs WS, and re-broadcasts audio chunks as new SSE events. iOS adds a <code class="inline">VoiceSession</code> actor (SFSpeechRecognizer + VAD), an <code class="inline">AudioQueue</code> (AVAudioEngine player node), and a <code class="inline">VoiceModeSheet</code> SwiftUI view with a Lottie-driven orb. <code class="inline">runTurn</code>, the dispatcher, memory, and Convex schema are unchanged.
+</div>
+
+<div class="callout">
+  <div class="head">Tech stack additions</div>
+  <strong>Server:</strong> <code class="inline">ws</code> (already a transitive dep via <code class="inline">@anthropic-ai/claude-agent-sdk</code>). <strong>iOS:</strong> <code class="inline">lottie-ios</code> 4.5+ via SPM; <code class="inline">SFSpeech</code>, <code class="inline">AVFoundation</code>, <code class="inline">AVAudioEngine</code> (system frameworks).
+</div>
+
+<h2 class="phase-h">Phase 1 — Server foundation</h2>
+
+<section class="task" id="task-1">
+  <div class="task-h"><span class="tn">Task 1</span><h3>Add <code class="inline">source</code> + <code class="inline">voiceTurnId</code> to <code class="inline">ParsedInbound</code></h3><a class="anchor" href="#task-1">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>server/channels/types.ts</code></div>
+    <div><span class="kind modify">modify</span> <code>server/channels/index.ts:73</code> (runTurn signature)</div>
+    <div><span class="kind modify">modify</span> <code>server/interaction-agent.ts</code> (opts shape that runTurn passes in)</div>
+    <div><span class="kind test">test</span> <code>tests/voice/parsed-inbound.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing test</div>
+
+  <pre><code><span class="tok-com">// tests/voice/parsed-inbound.test.ts</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+<span class="tok-kw">import type</span> { ParsedInbound } <span class="tok-kw">from</span> <span class="tok-str">"../../server/channels/types.js"</span>;
+
+test(<span class="tok-str">"ParsedInbound accepts source: 'voice' + voiceTurnId"</span>, () =&gt; {
+  <span class="tok-kw">const</span> inbound: ParsedInbound = {
+    conversationId: <span class="tok-str">"ios:dev-123:thread-abc"</span>,
+    from: <span class="tok-str">"ios:dev-123"</span>,
+    content: <span class="tok-str">"hello"</span>,
+    source: <span class="tok-str">"voice"</span>,
+    voiceTurnId: <span class="tok-str">"turn-xyz"</span>,
+  };
+  assert.equal(inbound.source, <span class="tok-str">"voice"</span>);
+  assert.equal(inbound.voiceTurnId, <span class="tok-str">"turn-xyz"</span>);
+});
+
+test(<span class="tok-str">"ParsedInbound accepts undefined source (text path)"</span>, () =&gt; {
+  <span class="tok-kw">const</span> inbound: ParsedInbound = {
+    conversationId: <span class="tok-str">"sms:+15551234567"</span>,
+    from: <span class="tok-str">"+15551234567"</span>,
+    content: <span class="tok-str">"hi"</span>,
+  };
+  assert.equal(inbound.source, <span class="tok-kw">undefined</span>);
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect failure</div>
+    <pre class="lang-bash"><code>node --test tests/voice/parsed-inbound.test.ts</code></pre>
+    <div class="expect bad"><b>Expected:</b> TS compile error — <code class="inline">source</code> and <code class="inline">voiceTurnId</code> not assignable to <code class="inline">ParsedInbound</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Add fields to <code class="inline">ParsedInbound</code></div>
+
+  Edit <code class="inline">server/channels/types.ts</code>. Add two optional fields after <code class="inline">precomputedTurnId?</code> in the <code class="inline">ParsedInbound</code> interface (around line 45):
+
+  <pre><code>  <span class="tok-com">/**
+   * "voice" when the inbound came from iOS voice mode. Triggers the
+   * voice-mode addendum on the agent system prompt + the tts_* SSE
+   * pipeline on the outbound. Undefined for text channels.
+   */</span>
+  source?: <span class="tok-str">"voice"</span>;
+  <span class="tok-com">/**
+   * Client-generated UUID per voice utterance. Tags outbound
+   * tts_chunk events so the iOS client can drop stale audio when
+   * the user fires another turn quickly.
+   */</span>
+  voiceTurnId?: <span class="tok-kw">string</span>;</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Thread fields through <code class="inline">runTurn</code></div>
+
+  Open <code class="inline">server/channels/index.ts</code>. Find the function <code class="inline">runTurn</code> (around line 73) and the opts it builds for the interaction agent. The function passes a <code class="inline">RunTurnOptions</code>-style object down to <code class="inline">runInteraction</code>. Add the two new fields to that pass-through (search for where <code class="inline">conversationId</code>, <code class="inline">content</code>, <code class="inline">threadId</code> are assembled — add <code class="inline">source: inbound.source</code> and <code class="inline">voiceTurnId: inbound.voiceTurnId</code> alongside).
+
+  Then in <code class="inline">server/interaction-agent.ts</code>, extend the opts type that <code class="inline">runInteraction</code> accepts. Around line 400, where you see fields like <code class="inline">conversationId</code>, <code class="inline">content</code>, <code class="inline">threadId</code>:
+
+  <pre><code><span class="tok-kw">type</span> <span class="tok-type">RunInteractionOpts</span> = {
+  conversationId: <span class="tok-kw">string</span>;
+  content: <span class="tok-kw">string</span>;
+  threadId?: <span class="tok-kw">string</span>;
+  <span class="tok-com">// ...existing fields...</span>
+  source?: <span class="tok-str">"voice"</span>;       <span class="tok-com">// NEW</span>
+  voiceTurnId?: <span class="tok-kw">string</span>;     <span class="tok-com">// NEW</span>
+};</code></pre>
+
+  <div class="callout"><div class="head">Note</div>If your runtime opts type lives in a separate file or is inferred, adapt — keep field names exactly <code class="inline">source</code> and <code class="inline">voiceTurnId</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Run test; verify pass</div>
+    <pre class="lang-bash"><code>node --test tests/voice/parsed-inbound.test.ts
+npx tsc --noEmit 2&gt;&amp;1 | grep -c <span class="tok-str">"error TS"</span></code></pre>
+    <div class="expect"><b>Expected:</b> tests <em>pass</em>. <code class="inline">tsc</code> count stays at <code class="inline">8</code> (baseline) — no new errors.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 6</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/channels/types.ts server/channels/index.ts server/interaction-agent.ts tests/voice/parsed-inbound.test.ts
+git commit -m <span class="tok-str">"feat(server): thread source+voiceTurnId through ParsedInbound and runTurn"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-2">
+  <div class="task-h"><span class="tn">Task 2</span><h3>Voice-mode system prompt addendum</h3><a class="anchor" href="#task-2">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>server/interaction-agent.ts</code> (around line 456)</div>
+    <div><span class="kind test">test</span> <code>tests/voice/interaction-prompt.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing test</div>
+
+  <pre><code><span class="tok-com">// tests/voice/interaction-prompt.test.ts</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+<span class="tok-kw">import</span> { buildSystemPrompt } <span class="tok-kw">from</span> <span class="tok-str">"../../server/interaction-agent.js"</span>;
+
+test(<span class="tok-str">"voice source appends voice-mode addendum"</span>, () =&gt; {
+  <span class="tok-kw">const</span> prompt = buildSystemPrompt({ source: <span class="tok-str">"voice"</span> });
+  assert.match(prompt, /text-to-speech/);
+  assert.match(prompt, /No bullet lists/);
+});
+
+test(<span class="tok-str">"undefined source omits voice addendum"</span>, () =&gt; {
+  <span class="tok-kw">const</span> prompt = buildSystemPrompt({});
+  assert.doesNotMatch(prompt, /text-to-speech/);
+});
+
+test(<span class="tok-str">"sms source omits voice addendum"</span>, () =&gt; {
+  <span class="tok-kw">const</span> prompt = buildSystemPrompt({ source: <span class="tok-kw">undefined</span> });
+  assert.doesNotMatch(prompt, /text-to-speech/);
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect failure</div>
+    <pre class="lang-bash"><code>node --test tests/voice/interaction-prompt.test.ts</code></pre>
+    <div class="expect bad"><b>Expected:</b> FAIL — <code class="inline">buildSystemPrompt</code> is not exported.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Extract + extend the prompt builder</div>
+
+  In <code class="inline">server/interaction-agent.ts</code>, the system prompt is currently materialized inline around line 456 via <code class="inline">INTERACTION_SYSTEM.replace(...)</code>. Extract that into an exported function and add the addendum:
+
+  <pre><code><span class="tok-com">// near the top of the file, alongside INTERACTION_SYSTEM</span>
+<span class="tok-kw">export const</span> <span class="tok-type">VOICE_ADDENDUM</span> = `
+
+You are speaking to the user out loud through text-to-speech. Reply in conversational prose, not markdown. No bullet lists, no code blocks, no numbered sections, no asterisks. Lead with the answer in one sentence (12 words or fewer), then offer at most two more sentences of detail. If the user asks for a long list, summarise it in prose ("three things — first, ..., second, ..., third, ..."). When you must read out code, URLs, or IDs, say "I'll send that as a text" and skip them aloud.
+`.trim();
+
+<span class="tok-kw">export function</span> <span class="tok-func">buildSystemPrompt</span>(opts: { source?: <span class="tok-str">"voice"</span> }): <span class="tok-kw">string</span> {
+  <span class="tok-kw">const</span> base = INTERACTION_SYSTEM.replace(
+    <span class="tok-str">"{{INTEGRATIONS}}"</span>,
+    describeIntegrations().map((d) =&gt; `- ${d}`).join(<span class="tok-str">"\n"</span>) || <span class="tok-str">"(no integrations configured yet)"</span>,
+  );
+  <span class="tok-kw">if</span> (opts.source === <span class="tok-str">"voice"</span>) {
+    <span class="tok-kw">return</span> `${base}\n\n${VOICE_ADDENDUM}`;
+  }
+  <span class="tok-kw">return</span> base;
+}</code></pre>
+
+  Then replace the inline assembly at the old line 456 with:
+
+  <pre><code>  <span class="tok-kw">const</span> systemPrompt = buildSystemPrompt({ source: opts.source });</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Run test + tsc</div>
+    <pre class="lang-bash"><code>node --test tests/voice/interaction-prompt.test.ts
+npx tsc --noEmit 2&gt;&amp;1 | grep -c <span class="tok-str">"error TS"</span></code></pre>
+    <div class="expect"><b>Expected:</b> all three tests pass. tsc count stays at <code class="inline">8</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/interaction-agent.ts tests/voice/interaction-prompt.test.ts
+git commit -m <span class="tok-str">"feat(server): voice-mode system prompt addendum, conditional on source"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-3">
+  <div class="task-h"><span class="tn">Task 3</span><h3>Extend <code class="inline">POST /channels/ios/inbound</code> to accept voice fields</h3><a class="anchor" href="#task-3">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>server/ios/router.ts</code> (around line 397)</div>
+    <div><span class="kind test">test</span> <code>tests/voice/ios-router-voice.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing test</div>
+
+  <pre><code><span class="tok-com">// tests/voice/ios-router-voice.test.ts
+// Requires the live test harness (CONVEX_URL + :3456 dev server) like
+// tests/ios-thread-routes.test.ts. Skip in unit-only CI.</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+
+<span class="tok-kw">const</span> base = process.env.BOOP_TEST_BASE_URL ?? <span class="tok-str">"http://localhost:3456"</span>;
+<span class="tok-kw">const</span> token = process.env.BOOP_TEST_BEARER ?? <span class="tok-str">""</span>;
+
+test(<span class="tok-str">"POST /channels/ios/inbound accepts source + voiceTurnId"</span>, { skip: !token }, <span class="tok-kw">async</span> () =&gt; {
+  <span class="tok-kw">const</span> res = <span class="tok-kw">await</span> fetch(`${base}/channels/ios/inbound`, {
+    method: <span class="tok-str">"POST"</span>,
+    headers: { <span class="tok-str">"Content-Type"</span>: <span class="tok-str">"application/json"</span>, Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      text: <span class="tok-str">"hello"</span>,
+      threadId: <span class="tok-str">"test-thread"</span>,
+      source: <span class="tok-str">"voice"</span>,
+      voiceTurnId: <span class="tok-str">"voice-turn-123"</span>,
+    }),
+  });
+  assert.equal(res.status, <span class="tok-num">200</span>);
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect skip (no harness)</div>
+    <pre class="lang-bash"><code>node --test tests/voice/ios-router-voice.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> 0 fails (test skips without <code class="inline">BOOP_TEST_BEARER</code>). The TS shape compiling is the real check here.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Wire the fields through the handler</div>
+
+  In <code class="inline">server/ios/router.ts</code>, find the <code class="inline">POST /inbound</code> handler (line 397). It currently destructures <code class="inline">text</code>, <code class="inline">threadId</code>, etc. from the body. Add the two new fields and pass them into <code class="inline">runTurn</code>:
+
+  <pre><code>  router.post(<span class="tok-str">"/inbound"</span>, requireBearer, <span class="tok-kw">async</span> (req: AuthedRequest, res) =&gt; {
+    <span class="tok-kw">const</span> body = req.body ?? {};
+    <span class="tok-kw">const</span> text = String(body.text ?? <span class="tok-str">""</span>);
+    <span class="tok-kw">const</span> threadId = String(body.threadId ?? <span class="tok-str">""</span>);
+    <span class="tok-kw">const</span> source = body.source === <span class="tok-str">"voice"</span> ? <span class="tok-str">"voice"</span> <span class="tok-kw">as const</span> : <span class="tok-kw">undefined</span>;
+    <span class="tok-kw">const</span> voiceTurnId = <span class="tok-kw">typeof</span> body.voiceTurnId === <span class="tok-str">"string"</span> ? body.voiceTurnId : <span class="tok-kw">undefined</span>;
+    <span class="tok-com">// ... existing dedup/persist logic unchanged ...</span>
+
+    <span class="tok-kw">await</span> runTurn({
+      conversationId,
+      from: `ios:${deviceId}`,
+      content: text,
+      threadId,
+      attachments,
+      precomputedUserMessageId: messageId,
+      precomputedTurnId: turnId,
+      source,           <span class="tok-com">// NEW</span>
+      voiceTurnId,      <span class="tok-com">// NEW</span>
+    });
+
+    res.status(<span class="tok-num">200</span>).json({ ok: <span class="tok-kw">true</span>, messageId });
+  });</code></pre>
+
+  <div class="callout warn"><div class="head">Validation</div>Reject non-string <code class="inline">voiceTurnId</code> values silently (treat as undefined) rather than 400ing — clients on older app versions don't send it at all.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Verify tsc + start dev server, manual curl</div>
+    <pre class="lang-bash"><code>npx tsc --noEmit 2&gt;&amp;1 | grep -c <span class="tok-str">"error TS"</span>
+<span class="tok-com"># In another shell, start the dev server and run a curl with a real bearer:</span>
+curl -s -X POST http://localhost:3456/channels/ios/inbound \
+  -H <span class="tok-str">"Authorization: Bearer $DEV_BEARER"</span> \
+  -H <span class="tok-str">"Content-Type: application/json"</span> \
+  -d <span class="tok-str">'{"text":"hello","threadId":"smoke","source":"voice","voiceTurnId":"vt-1"}'</span></code></pre>
+    <div class="expect"><b>Expected:</b> tsc count stays at <code class="inline">8</code>. curl returns <code class="inline">{"ok":true,"messageId":"..."}</code>. Server logs the inbound with no error.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/ios/router.ts tests/voice/ios-router-voice.test.ts
+git commit -m <span class="tok-str">"feat(server/ios): accept source+voiceTurnId on /inbound; pass to runTurn"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<h2 class="phase-h">Phase 2 — Voice pipeline (server/voice/)</h2>
+
+<section class="task" id="task-4">
+  <div class="task-h"><span class="tn">Task 4</span><h3><code class="inline">SentenceBuffer</code> — token stream to sentence chunks</h3><a class="anchor" href="#task-4">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>server/voice/sentence-buffer.ts</code></div>
+    <div><span class="kind test">test</span> <code>tests/voice/sentence-buffer.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing tests</div>
+
+  <pre><code><span class="tok-com">// tests/voice/sentence-buffer.test.ts</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+<span class="tok-kw">import</span> { createSentenceBuffer } <span class="tok-kw">from</span> <span class="tok-str">"../../server/voice/sentence-buffer.js"</span>;
+
+test(<span class="tok-str">"splits on period + space"</span>, () =&gt; {
+  <span class="tok-kw">const</span> out: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">const</span> buf = createSentenceBuffer({ onSentence: (s) =&gt; out.push(s) });
+  buf.push(<span class="tok-str">"Hello world. "</span>);
+  buf.push(<span class="tok-str">"How are you?"</span>);
+  buf.flush();
+  assert.deepEqual(out, [<span class="tok-str">"Hello world."</span>, <span class="tok-str">"How are you?"</span>]);
+});
+
+test(<span class="tok-str">"does NOT split on Mr. / U.S. / 3.14"</span>, () =&gt; {
+  <span class="tok-kw">const</span> out: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">const</span> buf = createSentenceBuffer({ onSentence: (s) =&gt; out.push(s) });
+  buf.push(<span class="tok-str">"Mr. Smith owes $3.14 from the U.S. office. "</span>);
+  buf.push(<span class="tok-str">"Done."</span>);
+  buf.flush();
+  assert.deepEqual(out, [<span class="tok-str">"Mr. Smith owes $3.14 from the U.S. office."</span>, <span class="tok-str">"Done."</span>]);
+});
+
+test(<span class="tok-str">"splits on ? and !"</span>, () =&gt; {
+  <span class="tok-kw">const</span> out: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">const</span> buf = createSentenceBuffer({ onSentence: (s) =&gt; out.push(s) });
+  buf.push(<span class="tok-str">"Really? Yes! Of course."</span>);
+  buf.flush();
+  assert.deepEqual(out, [<span class="tok-str">"Really?"</span>, <span class="tok-str">"Yes!"</span>, <span class="tok-str">"Of course."</span>]);
+});
+
+test(<span class="tok-str">"splits on colon for list intros"</span>, () =&gt; {
+  <span class="tok-kw">const</span> out: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">const</span> buf = createSentenceBuffer({ onSentence: (s) =&gt; out.push(s) });
+  buf.push(<span class="tok-str">"Here are three: first, second, and third. Done."</span>);
+  buf.flush();
+  assert.deepEqual(out, [<span class="tok-str">"Here are three:"</span>, <span class="tok-str">"first, second, and third."</span>, <span class="tok-str">"Done."</span>]);
+});
+
+test(<span class="tok-str">"flush emits remainder without trailing punctuation"</span>, () =&gt; {
+  <span class="tok-kw">const</span> out: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">const</span> buf = createSentenceBuffer({ onSentence: (s) =&gt; out.push(s) });
+  buf.push(<span class="tok-str">"tail with no period"</span>);
+  buf.flush();
+  assert.deepEqual(out, [<span class="tok-str">"tail with no period"</span>]);
+});
+
+test(<span class="tok-str">"force-flushes after maxBufferMs of inactivity"</span>, <span class="tok-kw">async</span> () =&gt; {
+  <span class="tok-kw">const</span> out: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">const</span> buf = createSentenceBuffer({
+    onSentence: (s) =&gt; out.push(s),
+    maxBufferMs: <span class="tok-num">50</span>,
+  });
+  buf.push(<span class="tok-str">"no terminator here"</span>);
+  <span class="tok-kw">await new</span> Promise((r) =&gt; setTimeout(r, <span class="tok-num">80</span>));
+  assert.deepEqual(out, [<span class="tok-str">"no terminator here"</span>]);
+  buf.dispose();
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect failure</div>
+    <pre class="lang-bash"><code>node --test tests/voice/sentence-buffer.test.ts</code></pre>
+    <div class="expect bad"><b>Expected:</b> Cannot find module <code class="inline">../../server/voice/sentence-buffer.js</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Implement</div>
+
+  Create <code class="inline">server/voice/sentence-buffer.ts</code>:
+
+  <pre><code><span class="tok-com">/**
+ * Accumulates streamed tokens and emits coherent sentence chunks
+ * suitable for ElevenLabs WS input. Handles common abbreviation
+ * false-positives (Mr., U.S., 3.14). On flush(), emits whatever's
+ * buffered. Optional maxBufferMs safety timer force-flushes when
+ * the agent emits a long un-punctuated reply (rare, but happens
+ * with tool-result regurgitation).
+ */</span>
+<span class="tok-kw">export interface</span> <span class="tok-type">SentenceBufferOpts</span> {
+  onSentence: (sentence: <span class="tok-kw">string</span>) =&gt; <span class="tok-kw">void</span>;
+  maxBufferMs?: <span class="tok-kw">number</span>;
+}
+
+<span class="tok-kw">export interface</span> <span class="tok-type">SentenceBuffer</span> {
+  push(chunk: <span class="tok-kw">string</span>): <span class="tok-kw">void</span>;
+  flush(): <span class="tok-kw">void</span>;
+  dispose(): <span class="tok-kw">void</span>;
+}
+
+<span class="tok-com">// Patterns that look like a sentence end but aren't: abbreviations,
+// honorifics, decimals. Checked against the token preceding the
+// candidate boundary (last 6 chars), case-insensitive.</span>
+<span class="tok-kw">const</span> ABBREV = /(?:^|[\s$])(mr|mrs|ms|dr|st|sr|jr|prof|u\.s|e\.g|i\.e|vs|etc|\d)\.?$/i;
+
+<span class="tok-com">// Match a sentence terminator followed by whitespace. The look-behind
+// excludes the abbreviation case via the ABBREV check above; this
+// regex finds candidate boundaries.</span>
+<span class="tok-kw">const</span> BOUNDARY = /([.!?:])(\s+|$)/;
+
+<span class="tok-kw">export function</span> <span class="tok-func">createSentenceBuffer</span>(opts: SentenceBufferOpts): SentenceBuffer {
+  <span class="tok-kw">let</span> buffer = <span class="tok-str">""</span>;
+  <span class="tok-kw">let</span> timer: NodeJS.Timeout | <span class="tok-kw">null</span> = <span class="tok-kw">null</span>;
+
+  <span class="tok-kw">function</span> <span class="tok-func">armTimer</span>() {
+    <span class="tok-kw">if</span> (!opts.maxBufferMs) <span class="tok-kw">return</span>;
+    <span class="tok-kw">if</span> (timer) clearTimeout(timer);
+    timer = setTimeout(() =&gt; {
+      <span class="tok-kw">if</span> (buffer.length &gt; <span class="tok-num">0</span>) {
+        opts.onSentence(buffer.trim());
+        buffer = <span class="tok-str">""</span>;
+      }
+    }, opts.maxBufferMs);
+  }
+
+  <span class="tok-kw">function</span> <span class="tok-func">tryDrain</span>() {
+    <span class="tok-kw">while</span> (<span class="tok-kw">true</span>) {
+      <span class="tok-kw">const</span> m = buffer.match(BOUNDARY);
+      <span class="tok-kw">if</span> (!m || m.index === <span class="tok-kw">undefined</span>) <span class="tok-kw">break</span>;
+      <span class="tok-kw">const</span> end = m.index + m[<span class="tok-num">1</span>].length;
+      <span class="tok-kw">const</span> before = buffer.slice(<span class="tok-num">0</span>, end);
+      <span class="tok-kw">const</span> precedingContext = before.slice(-<span class="tok-num">12</span>);
+      <span class="tok-kw">if</span> (ABBREV.test(precedingContext)) {
+        <span class="tok-com">// Boundary inside an abbreviation — skip past this terminator
+        // and keep scanning.</span>
+        <span class="tok-kw">const</span> nextSearch = before + (m[<span class="tok-num">2</span>] ?? <span class="tok-str">""</span>);
+        buffer = nextSearch + buffer.slice(end + (m[<span class="tok-num">2</span>]?.length ?? <span class="tok-num">0</span>));
+        <span class="tok-com">// Mark the boundary as consumed by advancing past it manually.</span>
+        <span class="tok-kw">const</span> consumed = before.length + (m[<span class="tok-num">2</span>]?.length ?? <span class="tok-num">0</span>);
+        <span class="tok-kw">const</span> rest = buffer.slice(consumed);
+        <span class="tok-kw">const</span> nextMatch = rest.match(BOUNDARY);
+        <span class="tok-kw">if</span> (!nextMatch || nextMatch.index === <span class="tok-kw">undefined</span>) <span class="tok-kw">break</span>;
+        <span class="tok-kw">const</span> absoluteIdx = consumed + nextMatch.index + nextMatch[<span class="tok-num">1</span>].length;
+        <span class="tok-kw">const</span> sentence = buffer.slice(<span class="tok-num">0</span>, absoluteIdx).trim();
+        opts.onSentence(sentence);
+        buffer = buffer.slice(absoluteIdx + (nextMatch[<span class="tok-num">2</span>]?.length ?? <span class="tok-num">0</span>));
+        <span class="tok-kw">continue</span>;
+      }
+      <span class="tok-kw">const</span> sentence = before.trim();
+      <span class="tok-kw">if</span> (sentence.length &gt; <span class="tok-num">0</span>) opts.onSentence(sentence);
+      buffer = buffer.slice(end + (m[<span class="tok-num">2</span>]?.length ?? <span class="tok-num">0</span>));
+    }
+  }
+
+  <span class="tok-kw">return</span> {
+    push(chunk) {
+      buffer += chunk;
+      tryDrain();
+      armTimer();
+    },
+    flush() {
+      <span class="tok-kw">if</span> (timer) { clearTimeout(timer); timer = <span class="tok-kw">null</span>; }
+      <span class="tok-kw">const</span> tail = buffer.trim();
+      <span class="tok-kw">if</span> (tail.length &gt; <span class="tok-num">0</span>) opts.onSentence(tail);
+      buffer = <span class="tok-str">""</span>;
+    },
+    dispose() {
+      <span class="tok-kw">if</span> (timer) { clearTimeout(timer); timer = <span class="tok-kw">null</span>; }
+      buffer = <span class="tok-str">""</span>;
+    },
+  };
+}</code></pre>
+
+  <div class="callout warn"><div class="head">Heads-up</div>The abbreviation re-scan logic is the trickiest part. If your initial test for "Mr. Smith..." still splits, simplify by using a regex with negative look-behind <code class="inline">/(?&lt;!\bMr|\bMrs|\bMs|\bDr|\bSt|\bSr|\bJr|\bU\.S|\bi\.e|\be\.g|\d)([.!?:])(\s+|$)/</code> — Node 18+ supports look-behind.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Run; verify pass</div>
+    <pre class="lang-bash"><code>node --test tests/voice/sentence-buffer.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> all 6 tests pass.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/voice/sentence-buffer.ts tests/voice/sentence-buffer.test.ts
+git commit -m <span class="tok-str">"feat(server/voice): SentenceBuffer for token-stream-&gt;sentence chunking"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-5">
+  <div class="task-h"><span class="tn">Task 5</span><h3><code class="inline">markdown-strip</code> — fallback-path cleaner</h3><a class="anchor" href="#task-5">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>server/voice/markdown-strip.ts</code></div>
+    <div><span class="kind test">test</span> <code>tests/voice/markdown-strip.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing tests</div>
+
+  <pre><code><span class="tok-com">// tests/voice/markdown-strip.test.ts</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+<span class="tok-kw">import</span> { stripMarkdown } <span class="tok-kw">from</span> <span class="tok-str">"../../server/voice/markdown-strip.js"</span>;
+
+test(<span class="tok-str">"strips bold and italic"</span>, () =&gt; {
+  assert.equal(stripMarkdown(<span class="tok-str">"This is **bold** and *italic*"</span>), <span class="tok-str">"This is bold and italic"</span>);
+});
+
+test(<span class="tok-str">"strips inline code"</span>, () =&gt; {
+  assert.equal(stripMarkdown(<span class="tok-str">"call `foo()` now"</span>), <span class="tok-str">"call foo() now"</span>);
+});
+
+test(<span class="tok-str">"removes fenced code blocks"</span>, () =&gt; {
+  <span class="tok-kw">const</span> input = <span class="tok-str">"prose\n\`\`\`ts\nconst x = 1\n\`\`\`\nmore prose"</span>;
+  assert.equal(stripMarkdown(input), <span class="tok-str">"prose\n\nmore prose"</span>);
+});
+
+test(<span class="tok-str">"removes heading markers, keeps text"</span>, () =&gt; {
+  assert.equal(stripMarkdown(<span class="tok-str">"# Title\n## Sub"</span>), <span class="tok-str">"Title\nSub"</span>);
+});
+
+test(<span class="tok-str">"removes bullet markers, keeps content"</span>, () =&gt; {
+  <span class="tok-kw">const</span> input = <span class="tok-str">"- one\n- two\n- three"</span>;
+  assert.equal(stripMarkdown(input), <span class="tok-str">"one\ntwo\nthree"</span>);
+});
+
+test(<span class="tok-str">"removes numbered list markers"</span>, () =&gt; {
+  assert.equal(stripMarkdown(<span class="tok-str">"1. first\n2. second"</span>), <span class="tok-str">"first\nsecond"</span>);
+});
+
+test(<span class="tok-str">"preserves URLs as plain text"</span>, () =&gt; {
+  assert.equal(stripMarkdown(<span class="tok-str">"see [docs](https://example.com)"</span>), <span class="tok-str">"see docs (https://example.com)"</span>);
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect failure</div>
+    <pre class="lang-bash"><code>node --test tests/voice/markdown-strip.test.ts</code></pre>
+    <div class="expect bad"><b>Expected:</b> module not found.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Implement</div>
+
+  Create <code class="inline">server/voice/markdown-strip.ts</code>:
+
+  <pre><code><span class="tok-com">/**
+ * Removes Markdown syntax for the AVSpeech fallback path. The
+ * primary ElevenLabs path receives prose directly from the agent
+ * (voice-mode addendum tells it not to emit markdown), but the
+ * fallback runs on whatever the agent produced.
+ */</span>
+<span class="tok-kw">export function</span> <span class="tok-func">stripMarkdown</span>(text: <span class="tok-kw">string</span>): <span class="tok-kw">string</span> {
+  <span class="tok-kw">return</span> text
+    <span class="tok-com">// Fenced code blocks (greedy, includes the fence lines)</span>
+    .replace(/```[\s\S]*?```/g, <span class="tok-str">""</span>)
+    <span class="tok-com">// Inline code</span>
+    .replace(/`([^`]+)`/g, <span class="tok-str">"$1"</span>)
+    <span class="tok-com">// Bold + italic (** and __ and * and _)</span>
+    .replace(/\*\*([^*]+)\*\*/g, <span class="tok-str">"$1"</span>)
+    .replace(/__([^_]+)__/g, <span class="tok-str">"$1"</span>)
+    .replace(/\*([^*\n]+)\*/g, <span class="tok-str">"$1"</span>)
+    .replace(/_([^_\n]+)_/g, <span class="tok-str">"$1"</span>)
+    <span class="tok-com">// Markdown links [text](url) -&gt; "text (url)"</span>
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, <span class="tok-str">"$1 ($2)"</span>)
+    <span class="tok-com">// Heading markers</span>
+    .replace(/^#+\s+/gm, <span class="tok-str">""</span>)
+    <span class="tok-com">// Bullet markers (-, *, +)</span>
+    .replace(/^[\-*+]\s+/gm, <span class="tok-str">""</span>)
+    <span class="tok-com">// Numbered list markers</span>
+    .replace(/^\d+\.\s+/gm, <span class="tok-str">""</span>)
+    <span class="tok-com">// Collapse triple-newlines that the code-block strip left behind</span>
+    .replace(/\n{3,}/g, <span class="tok-str">"\n\n"</span>)
+    .trim();
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Run; verify pass</div>
+    <pre class="lang-bash"><code>node --test tests/voice/markdown-strip.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> all 7 tests pass.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/voice/markdown-strip.ts tests/voice/markdown-strip.test.ts
+git commit -m <span class="tok-str">"feat(server/voice): markdown-strip for AVSpeech fallback path"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-6">
+  <div class="task-h"><span class="tn">Task 6</span><h3>ElevenLabs WS adapter</h3><a class="anchor" href="#task-6">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>server/voice/tts-elevenlabs.ts</code></div>
+    <div><span class="kind test">test</span> <code>tests/voice/tts-elevenlabs.test.ts</code> (uses a mock WS server)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing test with mock WS</div>
+
+  <pre><code><span class="tok-com">// tests/voice/tts-elevenlabs.test.ts</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+<span class="tok-kw">import</span> { WebSocketServer } <span class="tok-kw">from</span> <span class="tok-str">"ws"</span>;
+<span class="tok-kw">import</span> { createElevenLabsStream } <span class="tok-kw">from</span> <span class="tok-str">"../../server/voice/tts-elevenlabs.js"</span>;
+
+<span class="tok-kw">function</span> <span class="tok-func">withMockServer</span>(handler: (port: <span class="tok-kw">number</span>) =&gt; Promise&lt;<span class="tok-kw">void</span>&gt;) {
+  <span class="tok-kw">return new</span> Promise&lt;<span class="tok-kw">void</span>&gt;((resolve, reject) =&gt; {
+    <span class="tok-kw">const</span> wss = <span class="tok-kw">new</span> WebSocketServer({ port: <span class="tok-num">0</span> });
+    wss.on(<span class="tok-str">"listening"</span>, <span class="tok-kw">async</span> () =&gt; {
+      <span class="tok-kw">const</span> port = (wss.address() <span class="tok-kw">as</span> <span class="tok-kw">any</span>).port;
+      wss.on(<span class="tok-str">"connection"</span>, (ws) =&gt; {
+        ws.on(<span class="tok-str">"message"</span>, (raw) =&gt; {
+          <span class="tok-kw">const</span> msg = JSON.parse(raw.toString());
+          <span class="tok-kw">if</span> (msg.text === <span class="tok-str">""</span>) {
+            ws.send(JSON.stringify({ audio: <span class="tok-kw">null</span>, isFinal: <span class="tok-kw">true</span> }));
+            ws.close();
+          } <span class="tok-kw">else</span> {
+            <span class="tok-kw">const</span> fakeAudio = Buffer.from(<span class="tok-str">"fake-mp3-bytes-"</span> + msg.text).toString(<span class="tok-str">"base64"</span>);
+            ws.send(JSON.stringify({ audio: fakeAudio, isFinal: <span class="tok-kw">false</span> }));
+          }
+        });
+      });
+      <span class="tok-kw">try</span> { <span class="tok-kw">await</span> handler(port); resolve(); }
+      <span class="tok-kw">catch</span> (e) { reject(e); }
+      <span class="tok-kw">finally</span> { wss.close(); }
+    });
+  });
+}
+
+test(<span class="tok-str">"emits onChunk for each text send"</span>, () =&gt; withMockServer(<span class="tok-kw">async</span> (port) =&gt; {
+  <span class="tok-kw">const</span> chunks: <span class="tok-kw">string</span>[] = [];
+  <span class="tok-kw">let</span> doneCalled = <span class="tok-kw">false</span>;
+  <span class="tok-kw">const</span> stream = createElevenLabsStream({
+    wsUrlOverride: `ws://localhost:${port}`,
+    voiceId: <span class="tok-str">"test"</span>,
+    modelId: <span class="tok-str">"eleven_flash_v2_5"</span>,
+    apiKey: <span class="tok-str">"test"</span>,
+    onChunk: (audio) =&gt; chunks.push(audio),
+    onDone: () =&gt; { doneCalled = <span class="tok-kw">true</span>; },
+    onError: () =&gt; assert.fail(<span class="tok-str">"unexpected error"</span>),
+  });
+  <span class="tok-kw">await</span> stream.opened;
+  stream.send(<span class="tok-str">"hello"</span>);
+  stream.send(<span class="tok-str">"world"</span>);
+  <span class="tok-kw">await</span> stream.end();
+  assert.equal(chunks.length, <span class="tok-num">2</span>);
+  assert.ok(chunks[<span class="tok-num">0</span>].includes(<span class="tok-str">"fake-mp3-bytes"</span>) === <span class="tok-kw">false</span>); <span class="tok-com">// base64-encoded</span>
+  assert.equal(doneCalled, <span class="tok-kw">true</span>);
+}));</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect failure</div>
+    <pre class="lang-bash"><code>node --test tests/voice/tts-elevenlabs.test.ts</code></pre>
+    <div class="expect bad"><b>Expected:</b> module not found.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Implement</div>
+
+  Create <code class="inline">server/voice/tts-elevenlabs.ts</code>:
+
+  <pre><code><span class="tok-kw">import</span> WebSocket <span class="tok-kw">from</span> <span class="tok-str">"ws"</span>;
+
+<span class="tok-kw">export interface</span> <span class="tok-type">ElevenLabsStreamOpts</span> {
+  voiceId: <span class="tok-kw">string</span>;
+  modelId: <span class="tok-kw">string</span>;
+  apiKey: <span class="tok-kw">string</span>;
+  onChunk: (audioBase64: <span class="tok-kw">string</span>) =&gt; <span class="tok-kw">void</span>;
+  onDone: () =&gt; <span class="tok-kw">void</span>;
+  onError: (reason: <span class="tok-kw">string</span>) =&gt; <span class="tok-kw">void</span>;
+  <span class="tok-com">/** Test hook — override the WS URL (skip the real ElevenLabs endpoint). */</span>
+  wsUrlOverride?: <span class="tok-kw">string</span>;
+}
+
+<span class="tok-kw">export interface</span> <span class="tok-type">ElevenLabsStream</span> {
+  opened: Promise&lt;<span class="tok-kw">void</span>&gt;;
+  send(text: <span class="tok-kw">string</span>): <span class="tok-kw">void</span>;
+  end(): Promise&lt;<span class="tok-kw">void</span>&gt;;
+  abort(): <span class="tok-kw">void</span>;
+}
+
+<span class="tok-kw">export function</span> <span class="tok-func">createElevenLabsStream</span>(opts: ElevenLabsStreamOpts): ElevenLabsStream {
+  <span class="tok-kw">const</span> url = opts.wsUrlOverride ?? (
+    `wss://api.elevenlabs.io/v1/text-to-speech/${opts.voiceId}/stream-input` +
+    `?model_id=${opts.modelId}&amp;output_format=mp3_44100_128`
+  );
+  <span class="tok-kw">const</span> ws = <span class="tok-kw">new</span> WebSocket(url, {
+    headers: { <span class="tok-str">"xi-api-key"</span>: opts.apiKey },
+  });
+
+  <span class="tok-kw">let</span> opened = <span class="tok-kw">false</span>;
+  <span class="tok-kw">let</span> ended = <span class="tok-kw">false</span>;
+  <span class="tok-kw">const</span> openedPromise = <span class="tok-kw">new</span> Promise&lt;<span class="tok-kw">void</span>&gt;((resolve, reject) =&gt; {
+    ws.on(<span class="tok-str">"open"</span>, () =&gt; {
+      opened = <span class="tok-kw">true</span>;
+      <span class="tok-com">// Send initialization frame (ElevenLabs streaming protocol).</span>
+      <span class="tok-kw">if</span> (!opts.wsUrlOverride) {
+        ws.send(JSON.stringify({
+          text: <span class="tok-str">" "</span>,
+          voice_settings: { stability: <span class="tok-num">0.5</span>, similarity_boost: <span class="tok-num">0.75</span> },
+          xi_api_key: opts.apiKey,
+        }));
+      }
+      resolve();
+    });
+    ws.on(<span class="tok-str">"error"</span>, (err) =&gt; {
+      opts.onError(`ws error: ${err.message}`);
+      <span class="tok-kw">if</span> (!opened) reject(err);
+    });
+  });
+
+  ws.on(<span class="tok-str">"message"</span>, (raw) =&gt; {
+    <span class="tok-kw">try</span> {
+      <span class="tok-kw">const</span> msg = JSON.parse(raw.toString());
+      <span class="tok-kw">if</span> (msg.audio) opts.onChunk(msg.audio);
+      <span class="tok-kw">if</span> (msg.isFinal) opts.onDone();
+    } <span class="tok-kw">catch</span> (e) {
+      opts.onError(`parse error: ${(e <span class="tok-kw">as</span> Error).message}`);
+    }
+  });
+
+  ws.on(<span class="tok-str">"close"</span>, () =&gt; {
+    <span class="tok-kw">if</span> (!ended) opts.onDone();
+  });
+
+  <span class="tok-kw">return</span> {
+    opened: openedPromise,
+    send(text) {
+      <span class="tok-kw">if</span> (ws.readyState !== <span class="tok-num">1</span>) <span class="tok-kw">return</span>;
+      ws.send(JSON.stringify({ text: text + <span class="tok-str">" "</span>, try_trigger_generation: <span class="tok-kw">true</span> }));
+    },
+    <span class="tok-kw">async</span> end() {
+      ended = <span class="tok-kw">true</span>;
+      <span class="tok-kw">if</span> (ws.readyState === <span class="tok-num">1</span>) ws.send(JSON.stringify({ text: <span class="tok-str">""</span> }));
+      <span class="tok-kw">await new</span> Promise&lt;<span class="tok-kw">void</span>&gt;((resolve) =&gt; {
+        ws.once(<span class="tok-str">"close"</span>, () =&gt; resolve());
+        setTimeout(resolve, <span class="tok-num">2000</span>); <span class="tok-com">// hard cap</span>
+      });
+    },
+    abort() {
+      ended = <span class="tok-kw">true</span>;
+      ws.close();
+    },
+  };
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Run; verify pass</div>
+    <pre class="lang-bash"><code>node --test tests/voice/tts-elevenlabs.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> 1 test passes.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/voice/tts-elevenlabs.ts tests/voice/tts-elevenlabs.test.ts
+git commit -m <span class="tok-str">"feat(server/voice): ElevenLabs WS adapter (Flash v2.5 streaming)"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-7">
+  <div class="task-h"><span class="tn">Task 7</span><h3><code class="inline">TtsSidecar</code> orchestrator</h3><a class="anchor" href="#task-7">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>server/voice/tts-sidecar.ts</code></div>
+    <div><span class="kind test">test</span> <code>tests/voice/tts-sidecar.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write failing tests (covers ElevenLabs path + fallback path + F11–F14)</div>
+
+  <pre><code><span class="tok-com">// tests/voice/tts-sidecar.test.ts</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+<span class="tok-kw">import</span> { broadcast, subscribe } <span class="tok-kw">from</span> <span class="tok-str">"../../server/broadcast.js"</span>;
+<span class="tok-kw">import</span> { createTtsSidecar } <span class="tok-kw">from</span> <span class="tok-str">"../../server/voice/tts-sidecar.js"</span>;
+
+<span class="tok-kw">function</span> <span class="tok-func">collectEvents</span>(filter: (event: <span class="tok-kw">string</span>) =&gt; <span class="tok-kw">boolean</span>) {
+  <span class="tok-kw">const</span> events: { event: <span class="tok-kw">string</span>; data: <span class="tok-kw">any</span> }[] = [];
+  <span class="tok-kw">const</span> unsub = subscribe((msg) =&gt; {
+    <span class="tok-kw">if</span> (filter(msg.event)) events.push({ event: msg.event, data: msg.data });
+  });
+  <span class="tok-kw">return</span> { events, unsub };
+}
+
+test(<span class="tok-str">"emits tts_use_local when ELEVENLABS_API_KEY is unset"</span>, <span class="tok-kw">async</span> () =&gt; {
+  <span class="tok-kw">const</span> { events, unsub } = collectEvents((e) =&gt; e.startsWith(<span class="tok-str">"tts_"</span>));
+  <span class="tok-kw">const</span> sidecar = createTtsSidecar({
+    conversationId: <span class="tok-str">"ios:dev:thread"</span>,
+    voiceTurnId: <span class="tok-str">"vt-1"</span>,
+    config: { apiKey: <span class="tok-str">""</span>, voiceId: <span class="tok-str">"v"</span>, modelId: <span class="tok-str">"eleven_flash_v2_5"</span> },
+  });
+  broadcast(<span class="tok-str">"assistant_delta"</span>, { conversationId: <span class="tok-str">"ios:dev:thread"</span>, delta: <span class="tok-str">"Hello world."</span>, seq: <span class="tok-num">0</span> });
+  broadcast(<span class="tok-str">"assistant_message"</span>, { conversationId: <span class="tok-str">"ios:dev:thread"</span>, message: <span class="tok-str">"Hello world."</span> });
+  <span class="tok-kw">await new</span> Promise((r) =&gt; setTimeout(r, <span class="tok-num">50</span>));
+  sidecar.dispose();
+  unsub();
+  <span class="tok-kw">const</span> local = events.find((e) =&gt; e.event === <span class="tok-str">"tts_use_local"</span>);
+  assert.ok(local, <span class="tok-str">"expected tts_use_local"</span>);
+  assert.equal(<span class="tok-kw">true</span>, (local!.data <span class="tok-kw">as any</span>).text.includes(<span class="tok-str">"Hello world"</span>));
+});
+
+test(<span class="tok-str">"emits tts_done after assistant_message"</span>, <span class="tok-kw">async</span> () =&gt; {
+  <span class="tok-kw">const</span> { events, unsub } = collectEvents((e) =&gt; e === <span class="tok-str">"tts_done"</span>);
+  <span class="tok-kw">const</span> sidecar = createTtsSidecar({
+    conversationId: <span class="tok-str">"ios:dev:thread"</span>,
+    voiceTurnId: <span class="tok-str">"vt-2"</span>,
+    config: { apiKey: <span class="tok-str">""</span>, voiceId: <span class="tok-str">"v"</span>, modelId: <span class="tok-str">"eleven_flash_v2_5"</span> },
+  });
+  broadcast(<span class="tok-str">"assistant_message"</span>, { conversationId: <span class="tok-str">"ios:dev:thread"</span>, message: <span class="tok-str">"Done."</span> });
+  <span class="tok-kw">await new</span> Promise((r) =&gt; setTimeout(r, <span class="tok-num">50</span>));
+  sidecar.dispose();
+  unsub();
+  assert.equal(events.length, <span class="tok-num">1</span>);
+});
+
+test(<span class="tok-str">"ignores events for other conversationId"</span>, <span class="tok-kw">async</span> () =&gt; {
+  <span class="tok-kw">const</span> { events, unsub } = collectEvents((e) =&gt; e.startsWith(<span class="tok-str">"tts_"</span>));
+  <span class="tok-kw">const</span> sidecar = createTtsSidecar({
+    conversationId: <span class="tok-str">"ios:dev:thread"</span>,
+    voiceTurnId: <span class="tok-str">"vt-3"</span>,
+    config: { apiKey: <span class="tok-str">""</span>, voiceId: <span class="tok-str">"v"</span>, modelId: <span class="tok-str">"eleven_flash_v2_5"</span> },
+  });
+  broadcast(<span class="tok-str">"assistant_delta"</span>, { conversationId: <span class="tok-str">"sms:other"</span>, delta: <span class="tok-str">"nope."</span>, seq: <span class="tok-num">0</span> });
+  broadcast(<span class="tok-str">"assistant_message"</span>, { conversationId: <span class="tok-str">"sms:other"</span>, message: <span class="tok-str">"nope."</span> });
+  <span class="tok-kw">await new</span> Promise((r) =&gt; setTimeout(r, <span class="tok-num">50</span>));
+  sidecar.dispose();
+  unsub();
+  assert.equal(events.length, <span class="tok-num">0</span>);
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run; expect failure</div>
+    <pre class="lang-bash"><code>node --test tests/voice/tts-sidecar.test.ts</code></pre>
+    <div class="expect bad"><b>Expected:</b> module not found.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Implement</div>
+
+  Create <code class="inline">server/voice/tts-sidecar.ts</code>:
+
+  <pre><code><span class="tok-kw">import</span> { broadcast, subscribe } <span class="tok-kw">from</span> <span class="tok-str">"../broadcast.js"</span>;
+<span class="tok-kw">import</span> { createSentenceBuffer, <span class="tok-kw">type</span> SentenceBuffer } <span class="tok-kw">from</span> <span class="tok-str">"./sentence-buffer.js"</span>;
+<span class="tok-kw">import</span> { createElevenLabsStream, <span class="tok-kw">type</span> ElevenLabsStream } <span class="tok-kw">from</span> <span class="tok-str">"./tts-elevenlabs.js"</span>;
+<span class="tok-kw">import</span> { stripMarkdown } <span class="tok-kw">from</span> <span class="tok-str">"./markdown-strip.js"</span>;
+
+<span class="tok-kw">export interface</span> <span class="tok-type">TtsConfig</span> {
+  apiKey: <span class="tok-kw">string</span>;     <span class="tok-com">// "" means fallback path</span>
+  voiceId: <span class="tok-kw">string</span>;
+  modelId: <span class="tok-kw">string</span>;
+}
+
+<span class="tok-kw">export interface</span> <span class="tok-type">TtsSidecarOpts</span> {
+  conversationId: <span class="tok-kw">string</span>;
+  voiceTurnId: <span class="tok-kw">string</span>;
+  config: TtsConfig;
+}
+
+<span class="tok-kw">export interface</span> <span class="tok-type">TtsSidecar</span> { dispose(): <span class="tok-kw">void</span> }
+
+<span class="tok-kw">export function</span> <span class="tok-func">createTtsSidecar</span>(opts: TtsSidecarOpts): TtsSidecar {
+  <span class="tok-kw">const</span> { conversationId, voiceTurnId, config } = opts;
+  <span class="tok-kw">const</span> useFallback = !config.apiKey;
+  <span class="tok-kw">let</span> seq = <span class="tok-num">0</span>;
+  <span class="tok-kw">let</span> disposed = <span class="tok-kw">false</span>;
+  <span class="tok-kw">let</span> elevenlabs: ElevenLabsStream | <span class="tok-kw">null</span> = <span class="tok-kw">null</span>;
+  <span class="tok-kw">let</span> fallbackBuffer = <span class="tok-str">""</span>;
+  <span class="tok-kw">let</span> emittedDone = <span class="tok-kw">false</span>;
+
+  <span class="tok-kw">function</span> <span class="tok-func">emitChunk</span>(audioBase64: <span class="tok-kw">string</span>) {
+    broadcast(<span class="tok-str">"tts_chunk"</span>, { conversationId, voiceTurnId, seq: seq++, audio: audioBase64, mime: <span class="tok-str">"audio/mpeg"</span> });
+  }
+
+  <span class="tok-kw">function</span> <span class="tok-func">emitDone</span>() {
+    <span class="tok-kw">if</span> (emittedDone) <span class="tok-kw">return</span>;
+    emittedDone = <span class="tok-kw">true</span>;
+    broadcast(<span class="tok-str">"tts_done"</span>, { conversationId, voiceTurnId });
+  }
+
+  <span class="tok-kw">function</span> <span class="tok-func">emitLocalFallback</span>(text: <span class="tok-kw">string</span>) {
+    broadcast(<span class="tok-str">"tts_use_local"</span>, { conversationId, voiceTurnId, text: stripMarkdown(text) });
+    emitDone();
+  }
+
+  <span class="tok-kw">function</span> <span class="tok-func">emitError</span>(reason: <span class="tok-kw">string</span>) {
+    broadcast(<span class="tok-str">"tts_error"</span>, { conversationId, voiceTurnId, reason });
+  }
+
+  <span class="tok-kw">const</span> sentenceBuffer: SentenceBuffer = createSentenceBuffer({
+    maxBufferMs: <span class="tok-num">1500</span>,
+    onSentence: (sentence) =&gt; {
+      <span class="tok-kw">if</span> (disposed) <span class="tok-kw">return</span>;
+      <span class="tok-kw">if</span> (useFallback) {
+        fallbackBuffer += (fallbackBuffer ? <span class="tok-str">" "</span> : <span class="tok-str">""</span>) + sentence;
+        <span class="tok-kw">return</span>;
+      }
+      <span class="tok-kw">if</span> (!elevenlabs) {
+        elevenlabs = createElevenLabsStream({
+          voiceId: config.voiceId,
+          modelId: config.modelId,
+          apiKey: config.apiKey,
+          onChunk: (audio) =&gt; emitChunk(audio),
+          onDone: () =&gt; emitDone(),
+          onError: (reason) =&gt; {
+            <span class="tok-com">// F11/F12: WS failed mid-turn — fall back with remaining text</span>
+            emitError(reason);
+            elevenlabs = <span class="tok-kw">null</span>;
+            fallbackBuffer += (fallbackBuffer ? <span class="tok-str">" "</span> : <span class="tok-str">""</span>) + sentence;
+          },
+        });
+      }
+      elevenlabs.send(sentence);
+    },
+  });
+
+  <span class="tok-kw">const</span> unsub = subscribe((msg) =&gt; {
+    <span class="tok-kw">if</span> (disposed) <span class="tok-kw">return</span>;
+    <span class="tok-kw">const</span> data = msg.data <span class="tok-kw">as any</span>;
+    <span class="tok-kw">if</span> (data?.conversationId !== conversationId) <span class="tok-kw">return</span>;
+    <span class="tok-kw">if</span> (msg.event === <span class="tok-str">"assistant_delta"</span>) {
+      <span class="tok-kw">if</span> (<span class="tok-kw">typeof</span> data.delta === <span class="tok-str">"string"</span>) sentenceBuffer.push(data.delta);
+    } <span class="tok-kw">else if</span> (msg.event === <span class="tok-str">"assistant_message"</span>) {
+      sentenceBuffer.flush();
+      <span class="tok-kw">if</span> (useFallback &amp;&amp; fallbackBuffer) {
+        emitLocalFallback(fallbackBuffer);
+      } <span class="tok-kw">else if</span> (elevenlabs) {
+        elevenlabs.end().then(() =&gt; emitDone());
+      } <span class="tok-kw">else if</span> (fallbackBuffer) {
+        emitLocalFallback(fallbackBuffer);
+      } <span class="tok-kw">else</span> {
+        emitDone();
+      }
+    }
+  });
+
+  <span class="tok-kw">return</span> {
+    dispose() {
+      <span class="tok-kw">if</span> (disposed) <span class="tok-kw">return</span>;
+      disposed = <span class="tok-kw">true</span>;
+      unsub();
+      sentenceBuffer.dispose();
+      <span class="tok-kw">if</span> (elevenlabs) elevenlabs.abort();
+    },
+  };
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Run; verify pass</div>
+    <pre class="lang-bash"><code>node --test tests/voice/tts-sidecar.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> 3 tests pass.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/voice/tts-sidecar.ts tests/voice/tts-sidecar.test.ts
+git commit -m <span class="tok-str">"feat(server/voice): TtsSidecar orchestrator (ElevenLabs + fallback)"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<h2 class="phase-h">Phase 3 — Wire-up + env</h2>
+
+<section class="task" id="task-8">
+  <div class="task-h"><span class="tn">Task 8</span><h3>Spawn <code class="inline">TtsSidecar</code> from <code class="inline">runInteraction</code> on voice turns</h3><a class="anchor" href="#task-8">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>server/interaction-agent.ts</code> (around line 470, just before the SDK <code class="inline">query()</code> loop)</div>
+    <div><span class="kind create">create</span> <code>server/voice/config.ts</code> (env reader)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Add an env reader</div>
+
+  Create <code class="inline">server/voice/config.ts</code>:
+
+  <pre><code><span class="tok-kw">export function</span> <span class="tok-func">readTtsConfig</span>() {
+  <span class="tok-kw">return</span> {
+    apiKey: process.env.ELEVENLABS_API_KEY ?? <span class="tok-str">""</span>,
+    voiceId: process.env.ELEVENLABS_VOICE_ID ?? <span class="tok-str">"9BWtsMINqrJLrRacOk9x"</span>, <span class="tok-com">// Aria</span>
+    modelId: process.env.ELEVENLABS_MODEL_ID ?? <span class="tok-str">"eleven_flash_v2_5"</span>,
+  };
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Spawn the sidecar at turn entry, dispose at exit</div>
+
+  In <code class="inline">server/interaction-agent.ts</code>, around line 470 (just before the <code class="inline">for await (const msg of query(...))</code> loop), conditionally create the sidecar. Tear it down in the matching <code class="inline">finally</code>:
+
+  <pre><code>  <span class="tok-kw">import</span> { createTtsSidecar, <span class="tok-kw">type</span> TtsSidecar } <span class="tok-kw">from</span> <span class="tok-str">"./voice/tts-sidecar.js"</span>;
+  <span class="tok-kw">import</span> { readTtsConfig } <span class="tok-kw">from</span> <span class="tok-str">"./voice/config.js"</span>;
+
+  <span class="tok-com">// ...inside runInteraction(opts), after history block is built...</span>
+
+  <span class="tok-kw">let</span> ttsSidecar: TtsSidecar | <span class="tok-kw">null</span> = <span class="tok-kw">null</span>;
+  <span class="tok-kw">if</span> (opts.source === <span class="tok-str">"voice"</span> &amp;&amp; opts.voiceTurnId) {
+    ttsSidecar = createTtsSidecar({
+      conversationId: opts.conversationId,
+      voiceTurnId: opts.voiceTurnId,
+      config: readTtsConfig(),
+    });
+  }
+
+  <span class="tok-kw">try</span> {
+    <span class="tok-kw">for await</span> (<span class="tok-kw">const</span> msg <span class="tok-kw">of</span> query({...})) {
+      <span class="tok-com">// ...existing token handling...</span>
+    }
+    <span class="tok-com">// existing broadcast("assistant_message", ...)</span>
+  } <span class="tok-kw">finally</span> {
+    <span class="tok-kw">if</span> (ttsSidecar) ttsSidecar.dispose();
+  }</code></pre>
+
+  <div class="callout warn"><div class="head">Watch out</div>The sidecar must be disposed even if <code class="inline">runTurn</code> throws. Otherwise the subscribe handler leaks across turns. Wrap in try/finally per the snippet above.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Add new event names to <code class="inline">STREAM_EVENTS</code> allowlist</div>
+
+  The SSE endpoint filters broadcasts by event name. In <code class="inline">server/ios/router.ts</code> (line 124) extend the set:
+
+  <pre><code><span class="tok-kw">const</span> STREAM_EVENTS = <span class="tok-kw">new</span> Set([
+  <span class="tok-str">"assistant_delta"</span>,
+  <span class="tok-str">"assistant_message"</span>,
+  <span class="tok-str">"assistant_ack"</span>,
+  <span class="tok-str">"assistant_attachments"</span>,
+  <span class="tok-str">"thinking"</span>,
+  <span class="tok-str">"error"</span>,
+  <span class="tok-str">"thread_icon"</span>,
+  <span class="tok-str">"agent_spawned"</span>,
+  <span class="tok-str">"agent_tool"</span>,
+  <span class="tok-str">"agent_done"</span>,
+  <span class="tok-str">"tts_chunk"</span>,        <span class="tok-com">// NEW</span>
+  <span class="tok-str">"tts_done"</span>,         <span class="tok-com">// NEW</span>
+  <span class="tok-str">"tts_error"</span>,        <span class="tok-com">// NEW</span>
+  <span class="tok-str">"tts_use_local"</span>,    <span class="tok-com">// NEW</span>
+]);</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Verify tsc + run all server tests so far</div>
+    <pre class="lang-bash"><code>npx tsc --noEmit 2&gt;&amp;1 | grep -c <span class="tok-str">"error TS"</span>
+node --test tests/voice/</code></pre>
+    <div class="expect"><b>Expected:</b> tsc count stays at <code class="inline">8</code>. All voice tests pass.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add server/voice/config.ts server/interaction-agent.ts server/ios/router.ts
+git commit -m <span class="tok-str">"feat(server): spawn TtsSidecar for voice-source turns; allowlist tts_* events"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-9">
+  <div class="task-h"><span class="tn">Task 9</span><h3>ENV vars + <code class="inline">.env.example</code></h3><a class="anchor" href="#task-9">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>.env.example</code></div>
+    <div><span class="kind modify">modify</span> <code>README.md</code> (mention voice setup)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Append to <code class="inline">.env.example</code></div>
+
+  <pre><code><span class="tok-com"># ----- iOS voice mode (M2) -----
+# Optional. If unset, voice mode falls back to AVSpeechSynthesizer on iOS.</span>
+ELEVENLABS_API_KEY=
+<span class="tok-com"># Default "Aria". See https://elevenlabs.io/voices for IDs.</span>
+ELEVENLABS_VOICE_ID=9BWtsMINqrJLrRacOk9x
+<span class="tok-com"># Pinned by default — purpose-built for streaming (~75ms first-byte).</span>
+ELEVENLABS_MODEL_ID=eleven_flash_v2_5</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Add a sentence to README under the deployment section</div>
+
+  <pre><code>### iOS voice mode (optional)
+
+Voice mode uses ElevenLabs streaming TTS when <span class="tok-pun">`</span>ELEVENLABS_API_KEY<span class="tok-pun">`</span> is set,
+and falls back to <span class="tok-pun">`</span>AVSpeechSynthesizer<span class="tok-pun">`</span> on-device otherwise. Voice transcription
+is always on-device (Apple Speech.framework) — no key needed.
+
+Estimated cost: ~$0.10 per 1k characters on the ElevenLabs Starter plan;
+~$10/week for daily personal use.</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Commit</div>
+    <pre class="lang-bash"><code>git add .env.example README.md
+git commit -m <span class="tok-str">"docs(env): document ELEVENLABS_* vars for voice mode"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-10">
+  <div class="task-h"><span class="tn">Task 10</span><h3>End-to-end voice integration test (mocked ElevenLabs)</h3><a class="anchor" href="#task-10">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind test">test</span> <code>tests/voice/e2e-voice.test.ts</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write the integration test</div>
+
+  <pre><code><span class="tok-com">// tests/voice/e2e-voice.test.ts
+// Requires the live dev server on :3456 and a valid bearer token (BOOP_TEST_BEARER).
+// Skips otherwise. ElevenLabs is NOT called — we test the fallback path by
+// running with ELEVENLABS_API_KEY="" in the dev shell.</span>
+<span class="tok-kw">import</span> { test } <span class="tok-kw">from</span> <span class="tok-str">"node:test"</span>;
+<span class="tok-kw">import</span> assert <span class="tok-kw">from</span> <span class="tok-str">"node:assert/strict"</span>;
+
+<span class="tok-kw">const</span> base = process.env.BOOP_TEST_BASE_URL ?? <span class="tok-str">"http://localhost:3456"</span>;
+<span class="tok-kw">const</span> token = process.env.BOOP_TEST_BEARER ?? <span class="tok-str">""</span>;
+<span class="tok-kw">const</span> threadId = process.env.BOOP_TEST_THREAD ?? <span class="tok-str">"voice-smoke"</span>;
+
+test(<span class="tok-str">"voice turn yields assistant_delta -&gt; tts_use_local|tts_chunk -&gt; tts_done"</span>, { skip: !token }, <span class="tok-kw">async</span> () =&gt; {
+  <span class="tok-kw">const</span> voiceTurnId = `vt-${Date.now()}`;
+  <span class="tok-kw">const</span> seen: <span class="tok-kw">string</span>[] = [];
+
+  <span class="tok-kw">const</span> ctrl = <span class="tok-kw">new</span> AbortController();
+  <span class="tok-kw">const</span> ssePromise = (<span class="tok-kw">async</span> () =&gt; {
+    <span class="tok-kw">const</span> res = <span class="tok-kw">await</span> fetch(`${base}/channels/ios/stream?threadId=${threadId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: ctrl.signal,
+    });
+    <span class="tok-kw">const</span> reader = res.body!.getReader();
+    <span class="tok-kw">const</span> decoder = <span class="tok-kw">new</span> TextDecoder();
+    <span class="tok-kw">let</span> buf = <span class="tok-str">""</span>;
+    <span class="tok-kw">while</span> (!ctrl.signal.aborted) {
+      <span class="tok-kw">const</span> { value, done } = <span class="tok-kw">await</span> reader.read();
+      <span class="tok-kw">if</span> (done) <span class="tok-kw">break</span>;
+      buf += decoder.decode(value, { stream: <span class="tok-kw">true</span> });
+      <span class="tok-kw">const</span> lines = buf.split(<span class="tok-str">"\n"</span>);
+      buf = lines.pop() ?? <span class="tok-str">""</span>;
+      <span class="tok-kw">for</span> (<span class="tok-kw">const</span> line <span class="tok-kw">of</span> lines) {
+        <span class="tok-kw">if</span> (!line.startsWith(<span class="tok-str">"data:"</span>)) <span class="tok-kw">continue</span>;
+        <span class="tok-kw">const</span> msg = JSON.parse(line.slice(<span class="tok-num">5</span>).trim());
+        <span class="tok-kw">if</span> (msg.data?.voiceTurnId === voiceTurnId || msg.event === <span class="tok-str">"assistant_delta"</span> || msg.event === <span class="tok-str">"assistant_message"</span>) {
+          seen.push(msg.event);
+        }
+        <span class="tok-kw">if</span> (msg.event === <span class="tok-str">"tts_done"</span> &amp;&amp; msg.data?.voiceTurnId === voiceTurnId) ctrl.abort();
+      }
+    }
+  })();
+
+  <span class="tok-kw">await new</span> Promise((r) =&gt; setTimeout(r, <span class="tok-num">300</span>)); <span class="tok-com">// give SSE time to attach</span>
+  <span class="tok-kw">await</span> fetch(`${base}/channels/ios/inbound`, {
+    method: <span class="tok-str">"POST"</span>,
+    headers: { <span class="tok-str">"Content-Type"</span>: <span class="tok-str">"application/json"</span>, Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text: <span class="tok-str">"say a one-sentence hello"</span>, threadId, source: <span class="tok-str">"voice"</span>, voiceTurnId }),
+  });
+
+  <span class="tok-kw">await</span> Promise.race([
+    ssePromise,
+    <span class="tok-kw">new</span> Promise((_, reject) =&gt; setTimeout(() =&gt; reject(<span class="tok-kw">new</span> Error(<span class="tok-str">"timeout"</span>)), <span class="tok-num">30_000</span>)),
+  ]);
+
+  assert.ok(seen.includes(<span class="tok-str">"assistant_delta"</span>), <span class="tok-str">"missing assistant_delta"</span>);
+  assert.ok(seen.includes(<span class="tok-str">"tts_done"</span>), <span class="tok-str">"missing tts_done"</span>);
+  <span class="tok-kw">const</span> hadChunkOrLocal = seen.some((e) =&gt; e === <span class="tok-str">"tts_chunk"</span> || e === <span class="tok-str">"tts_use_local"</span>);
+  assert.ok(hadChunkOrLocal, <span class="tok-str">"missing tts_chunk or tts_use_local"</span>);
+});</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Run with the dev server up + ELEVENLABS_API_KEY unset</div>
+    <pre class="lang-bash"><code><span class="tok-com"># In server shell:</span>
+ELEVENLABS_API_KEY= npm run dev:server &amp;
+sleep 3
+
+<span class="tok-com"># In test shell:</span>
+BOOP_TEST_BEARER=$DEV_BEARER BOOP_TEST_THREAD=voice-smoke node --test tests/voice/e2e-voice.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> test passes. Logs show <code class="inline">tts_use_local</code> event (fallback path because key was empty).</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>(Optional) Run with a real key to verify the ElevenLabs path</div>
+    <pre class="lang-bash"><code>ELEVENLABS_API_KEY=$REAL_KEY npm run dev:server &amp;
+sleep 3
+BOOP_TEST_BEARER=$DEV_BEARER node --test tests/voice/e2e-voice.test.ts</code></pre>
+    <div class="expect"><b>Expected:</b> test passes; this time <code class="inline">tts_chunk</code> events appear.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Commit</div>
+    <pre class="lang-bash"><code>git add tests/voice/e2e-voice.test.ts
+git commit -m <span class="tok-str">"test(voice): e2e integration covers fallback + ElevenLabs paths"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<h2 class="phase-h">Phase 4 — iOS foundation</h2>
+
+<section class="task" id="task-11">
+  <div class="task-h"><span class="tn">Task 11</span><h3>Add <code class="inline">lottie-ios</code> SPM dep + <code class="inline">LottieView</code> wrapper</h3><a class="anchor" href="#task-11">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/project.yml</code> (add SPM dependency)</div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Views/Components/LottieView.swift</code></div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Resources/lottie/.gitkeep</code> (placeholder; real .json files in Task 18)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Add Lottie SPM dependency to <code class="inline">ios/project.yml</code></div>
+
+  Add a top-level <code class="inline">packages:</code> block (if not already present) and a target dependency. Inside the <code class="inline">Boop</code> target, add it under <code class="inline">dependencies</code>:
+
+  <pre><code>packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: <span class="tok-str">"4.5.0"</span>
+
+targets:
+  Boop:
+    <span class="tok-com"># ...existing fields...</span>
+    dependencies:
+      - package: Lottie</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Regenerate the Xcode project</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> "Loaded project". Open <code class="inline">ios/Boop.xcodeproj</code> in Xcode, confirm Lottie shows under Package Dependencies.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Create the resources folder placeholder</div>
+    <pre class="lang-bash"><code>mkdir -p ios/Boop/Resources/lottie
+touch ios/Boop/Resources/lottie/.gitkeep</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Implement <code class="inline">LottieView</code></div>
+
+  Create <code class="inline">ios/Boop/Views/Components/LottieView.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> SwiftUI
+<span class="tok-kw">import</span> Lottie
+
+<span class="tok-com">/// SwiftUI wrapper around Lottie's `LottieAnimationView`. Bundles
+/// the active-thread tint via a runtime color value provider, and
+/// honours Reduce Motion by holding the animation at frame 0.
+/// Falls back to a colored SF Symbol when the file is missing
+/// (development-time graceful fail).</span>
+<span class="tok-kw">struct</span> <span class="tok-type">LottieOrbView</span>: <span class="tok-type">UIViewRepresentable</span> {
+    <span class="tok-kw">let</span> name: <span class="tok-type">String</span>
+    <span class="tok-kw">let</span> tint: Color
+    <span class="tok-kw">let</span> loopMode: LottieLoopMode
+    @Environment(\.<span class="tok-type">accessibilityReduceMotion</span>) <span class="tok-kw">private var</span> reduceMotion
+
+    <span class="tok-kw">init</span>(name: <span class="tok-type">String</span>, tint: Color = .accentColor, loopMode: LottieLoopMode = .loop) {
+        <span class="tok-kw">self</span>.name = name
+        <span class="tok-kw">self</span>.tint = tint
+        <span class="tok-kw">self</span>.loopMode = loopMode
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">makeUIView</span>(context: <span class="tok-type">Context</span>) -&gt; <span class="tok-type">UIView</span> {
+        <span class="tok-kw">let</span> container = <span class="tok-type">UIView</span>()
+        <span class="tok-kw">let</span> animationView = LottieAnimationView(name: name)
+        animationView.contentMode = .scaleAspectFit
+        animationView.loopMode = loopMode
+        animationView.translatesAutoresizingMaskIntoConstraints = <span class="tok-kw">false</span>
+        container.addSubview(animationView)
+        NSLayoutConstraint.activate([
+            animationView.topAnchor.constraint(equalTo: container.topAnchor),
+            animationView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            animationView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            animationView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+        applyTint(animationView)
+        <span class="tok-kw">if</span> reduceMotion {
+            animationView.currentProgress = <span class="tok-num">0</span>
+        } <span class="tok-kw">else</span> {
+            animationView.play()
+        }
+        <span class="tok-kw">return</span> container
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">updateUIView</span>(_ container: <span class="tok-type">UIView</span>, context: <span class="tok-type">Context</span>) {
+        <span class="tok-kw">guard let</span> animationView = container.subviews.first <span class="tok-kw">as</span>? LottieAnimationView <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        applyTint(animationView)
+        <span class="tok-kw">if</span> reduceMotion &amp;&amp; animationView.isAnimationPlaying {
+            animationView.pause()
+            animationView.currentProgress = <span class="tok-num">0</span>
+        } <span class="tok-kw">else if</span> !reduceMotion &amp;&amp; !animationView.isAnimationPlaying {
+            animationView.play()
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">applyTint</span>(_ view: LottieAnimationView) {
+        <span class="tok-kw">let</span> ui = UIColor(tint)
+        <span class="tok-kw">var</span> r: CGFloat = <span class="tok-num">0</span>, g: CGFloat = <span class="tok-num">0</span>, b: CGFloat = <span class="tok-num">0</span>, a: CGFloat = <span class="tok-num">0</span>
+        ui.getRed(&amp;r, green: &amp;g, blue: &amp;b, alpha: &amp;a)
+        <span class="tok-kw">let</span> provider = ColorValueProvider(.init(r: Double(r), g: Double(g), b: Double(b), a: Double(a)))
+        <span class="tok-com">// Layer name must be "orb-fill" in the Lottie file. If your picks
+        // use a different name, change this string.</span>
+        view.setValueProvider(provider, keypath: .init(keypath: <span class="tok-str">"orb-fill.Fill 1.Color"</span>))
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Build + sanity-check</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -20 &amp;&amp; cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> <code class="inline">BUILD SUCCEEDED</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 6</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/project.yml ios/Boop/Views/Components/LottieView.swift ios/Boop/Resources/lottie/.gitkeep
+git commit -m <span class="tok-str">"feat(ios): add lottie-ios SPM + LottieOrbView SwiftUI wrapper"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-12">
+  <div class="task-h"><span class="tn">Task 12</span><h3><code class="inline">VoiceModeSheet</code> skeleton + wire dock entry</h3><a class="anchor" href="#task-12">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>ios/Boop/Views/Voice/VoiceModeSheet.swift</code></div>
+    <div><span class="kind create">create</span> <code>ios/Boop/State/VoiceModeStore.swift</code> (state machine — fleshed out in Task 18)</div>
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Views/Components/Dock.swift</code> (lines around 211-225)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Create the store stub</div>
+
+  Create <code class="inline">ios/Boop/State/VoiceModeStore.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> SwiftUI
+<span class="tok-kw">import</span> Observation
+
+<span class="tok-kw">enum</span> <span class="tok-type">VoiceState</span>: <span class="tok-type">Equatable</span> {
+    <span class="tok-kw">case</span> permissionPending
+    <span class="tok-kw">case</span> permissionDenied
+    <span class="tok-kw">case</span> listening
+    <span class="tok-kw">case</span> thinking
+    <span class="tok-kw">case</span> speaking
+    <span class="tok-kw">case</span> paused
+    <span class="tok-kw">case</span> error(message: <span class="tok-type">String</span>)
+}
+
+@Observable
+<span class="tok-kw">final class</span> <span class="tok-type">VoiceModeStore</span> {
+    <span class="tok-kw">var</span> state: <span class="tok-type">VoiceState</span> = .permissionPending
+    <span class="tok-kw">var</span> transcript: <span class="tok-type">String</span> = <span class="tok-str">""</span>
+    <span class="tok-kw">var</span> assistantText: <span class="tok-type">String</span> = <span class="tok-str">""</span>
+    <span class="tok-kw">var</span> currentTurnId: <span class="tok-type">String</span>?
+    <span class="tok-kw">var</span> isMuted: <span class="tok-type">Bool</span> = <span class="tok-kw">false</span>
+
+    <span class="tok-com">// Wired to VoiceSession + AudioQueue in Task 18.</span>
+    <span class="tok-kw">func</span> <span class="tok-func">enter</span>() { state = .permissionPending }
+    <span class="tok-kw">func</span> <span class="tok-func">exit</span>() { state = .permissionPending; transcript = <span class="tok-str">""</span>; assistantText = <span class="tok-str">""</span> }
+    <span class="tok-kw">func</span> <span class="tok-func">toggleMute</span>() { isMuted.toggle(); state = isMuted ? .paused : .listening }
+    <span class="tok-kw">func</span> <span class="tok-func">handoffToKeyboard</span>(into chat: ChatStore) {
+        chat.draft = transcript
+        exit()
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Create the sheet skeleton</div>
+
+  Create <code class="inline">ios/Boop/Views/Voice/VoiceModeSheet.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> SwiftUI
+
+<span class="tok-kw">struct</span> <span class="tok-type">VoiceModeSheet</span>: <span class="tok-type">View</span> {
+    @Bindable <span class="tok-kw">var</span> store: <span class="tok-type">VoiceModeStore</span>
+    @Environment(\.<span class="tok-type">dismiss</span>) <span class="tok-kw">private var</span> dismiss
+    <span class="tok-kw">let</span> threadTint: Color
+    <span class="tok-kw">let</span> threadName: <span class="tok-type">String</span>
+    <span class="tok-kw">let</span> onKeyboardHandoff: () -&gt; <span class="tok-type">Void</span>
+
+    <span class="tok-kw">var</span> body: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: <span class="tok-num">24</span>) {
+                header
+                Spacer()
+                orb
+                subtitle
+                Spacer()
+                controls
+            }
+            .padding(.horizontal, <span class="tok-num">24</span>)
+            .padding(.vertical, <span class="tok-num">32</span>)
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { store.enter() }
+        .onDisappear { store.exit() }
+    }
+
+    <span class="tok-kw">private var</span> header: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        HStack {
+            HStack(spacing: <span class="tok-num">8</span>) {
+                Circle().fill(threadTint).frame(width: <span class="tok-num">8</span>, height: <span class="tok-num">8</span>)
+                Text(<span class="tok-str">"\(threadName) · Voice"</span>)
+                    .font(.system(size: <span class="tok-num">12</span>))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: <span class="tok-str">"xmark"</span>)
+                    .font(.system(size: <span class="tok-num">14</span>, weight: .medium))
+                    .frame(width: <span class="tok-num">32</span>, height: <span class="tok-num">32</span>)
+                    .background(Color.gray.opacity(<span class="tok-num">0.18</span>), in: Circle())
+            }
+            .accessibilityIdentifier(<span class="tok-str">"voice.exit"</span>)
+        }
+    }
+
+    @ViewBuilder
+    <span class="tok-kw">private var</span> orb: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        <span class="tok-com">// Placeholder until Task 18 wires Lottie + state-driven animations.</span>
+        Circle()
+            .fill(RadialGradient(
+                colors: [threadTint, threadTint.opacity(<span class="tok-num">0.4</span>)],
+                center: .center, startRadius: <span class="tok-num">20</span>, endRadius: <span class="tok-num">90</span>))
+            .frame(width: <span class="tok-num">160</span>, height: <span class="tok-num">160</span>)
+            .shadow(color: threadTint.opacity(<span class="tok-num">0.4</span>), radius: <span class="tok-num">60</span>)
+            .accessibilityIdentifier(<span class="tok-str">"voice.orb"</span>)
+    }
+
+    <span class="tok-kw">private var</span> subtitle: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        VStack(spacing: <span class="tok-num">4</span>) {
+            Text(stateLabel)
+                .font(.system(size: <span class="tok-num">12</span>, weight: .medium))
+                .foregroundStyle(.secondary)
+                .tracking(<span class="tok-num">1</span>)
+            Text(store.transcript.isEmpty ? <span class="tok-str">" "</span> : <span class="tok-str">"\u{201C}\(store.transcript)\u{201D}"</span>)
+                .font(.system(size: <span class="tok-num">17</span>, weight: .regular).italic())
+                .foregroundStyle(.white)
+                .frame(minHeight: <span class="tok-num">24</span>)
+                .accessibilityIdentifier(<span class="tok-str">"voice.transcript"</span>)
+        }
+    }
+
+    <span class="tok-kw">private var</span> controls: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        HStack(spacing: <span class="tok-num">32</span>) {
+            circleButton(systemName: store.isMuted ? <span class="tok-str">"mic.slash.fill"</span> : <span class="tok-str">"speaker.slash.fill"</span>) {
+                store.toggleMute()
+            }.accessibilityIdentifier(<span class="tok-str">"voice.mute"</span>)
+            circleButton(systemName: <span class="tok-str">"xmark"</span>, ring: .red) {
+                dismiss()
+            }.accessibilityIdentifier(<span class="tok-str">"voice.exit.large"</span>)
+            circleButton(systemName: <span class="tok-str">"keyboard"</span>) {
+                onKeyboardHandoff()
+                dismiss()
+            }.accessibilityIdentifier(<span class="tok-str">"voice.keyboard"</span>)
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">circleButton</span>(systemName: <span class="tok-type">String</span>, ring: Color = .clear, action: @escaping () -&gt; <span class="tok-type">Void</span>) -&gt; <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: <span class="tok-num">20</span>, weight: .medium))
+                .foregroundStyle(ring == .clear ? .white : ring)
+                .frame(width: <span class="tok-num">56</span>, height: <span class="tok-num">56</span>)
+                .background(Color.gray.opacity(<span class="tok-num">0.18</span>), in: Circle())
+                .overlay(Circle().stroke(ring, lineWidth: ring == .clear ? <span class="tok-num">0</span> : <span class="tok-num">2</span>))
+        }
+    }
+
+    <span class="tok-kw">private var</span> stateLabel: <span class="tok-type">String</span> {
+        <span class="tok-kw">switch</span> store.state {
+        <span class="tok-kw">case</span> .permissionPending: <span class="tok-kw">return</span> <span class="tok-str">"PERMISSIONS"</span>
+        <span class="tok-kw">case</span> .permissionDenied: <span class="tok-kw">return</span> <span class="tok-str">"PERMISSION DENIED"</span>
+        <span class="tok-kw">case</span> .listening: <span class="tok-kw">return</span> <span class="tok-str">"LISTENING"</span>
+        <span class="tok-kw">case</span> .thinking: <span class="tok-kw">return</span> <span class="tok-str">"THINKING"</span>
+        <span class="tok-kw">case</span> .speaking: <span class="tok-kw">return</span> <span class="tok-str">"SPEAKING"</span>
+        <span class="tok-kw">case</span> .paused: <span class="tok-kw">return</span> <span class="tok-str">"PAUSED"</span>
+        <span class="tok-kw">case</span> .error: <span class="tok-kw">return</span> <span class="tok-str">"ERROR"</span>
+        }
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Wire the dock <code class="inline">voiceModeButton</code></div>
+
+  In <code class="inline">ios/Boop/Views/Components/Dock.swift</code> (lines 211–225), replace the inert placeholder with an action that opens the sheet. Add an <code class="inline">@State var showVoiceMode = false</code> at the top of the view and a <code class="inline">.sheet</code> modifier on the root <code class="inline">VStack</code>:
+
+  <pre><code><span class="tok-com">// near top of Dock view's body, add a @State:</span>
+@State <span class="tok-kw">private var</span> showVoiceMode = <span class="tok-kw">false</span>
+@State <span class="tok-kw">private var</span> voiceStore = <span class="tok-type">VoiceModeStore</span>()
+
+<span class="tok-com">// replace voiceModeButton (line 211) with:</span>
+<span class="tok-kw">private var</span> voiceModeButton: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+    Button {
+        showVoiceMode = <span class="tok-kw">true</span>
+    } label: {
+        ZStack {
+            Circle().fill(BoopColor.surfaceElev)
+            Circle().strokeBorder(BoopColor.border, lineWidth: <span class="tok-num">1</span>)
+            Image(systemName: <span class="tok-str">"mic.fill"</span>)
+                .font(.system(size: <span class="tok-num">14</span>, weight: .regular))
+                .foregroundStyle(ThreadTint.sky.text)
+        }
+        .frame(width: <span class="tok-num">36</span>, height: <span class="tok-num">36</span>)
+    }
+    .accessibilityLabel(<span class="tok-str">"Voice mode"</span>)
+    .accessibilityIdentifier(<span class="tok-str">"dock.voice"</span>)
+}
+
+<span class="tok-com">// on the root VStack of Dock, attach:</span>
+.sheet(isPresented: $showVoiceMode) {
+    VoiceModeSheet(
+        store: voiceStore,
+        threadTint: <span class="tok-com">/* current thread tint */</span> ThreadTint.sky.text,
+        threadName: <span class="tok-com">/* current thread name */</span> <span class="tok-str">"Sky"</span>,
+        onKeyboardHandoff: { chat.draft = voiceStore.transcript }
+    )
+    .interactiveDismissDisabled(<span class="tok-kw">false</span>)
+}</code></pre>
+
+  <div class="callout warn"><div class="head">Wire the real thread tint + name</div>The placeholder uses Sky. Pull from the Dock's existing active-tab binding — search for where <code class="inline">activeTab</code> or <code class="inline">activeThread</code> is referenced in the same file and substitute the actual values.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Regenerate + build</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -5 &amp;&amp; cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> <code class="inline">BUILD SUCCEEDED</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Manual smoke</div>
+    <p>Run the app in the simulator. Tap the dock mic icon. A black sheet should slide up showing a static blue gradient orb, "PERMISSIONS" label, and three control buttons. Tap ✕ to dismiss.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 6</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/State/VoiceModeStore.swift ios/Boop/Views/Voice/VoiceModeSheet.swift ios/Boop/Views/Components/Dock.swift
+git commit -m <span class="tok-str">"feat(ios): VoiceModeSheet skeleton + wire dock voiceModeButton"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-13">
+  <div class="task-h"><span class="tn">Task 13</span><h3><code class="inline">VoicePermissionsCard</code> view</h3><a class="anchor" href="#task-13">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>ios/Boop/Views/Voice/VoicePermissionsCard.swift</code></div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Voice/VoicePermissions.swift</code> (helper)</div>
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Resources/Info.plist</code> (usage strings)</div>
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Views/Voice/VoiceModeSheet.swift</code> (overlay card when state==.permissionPending)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Add Info.plist usage strings</div>
+
+  Open <code class="inline">ios/Boop/Resources/Info.plist</code> and add (or confirm) two keys:
+
+  <pre><code>&lt;key&gt;NSMicrophoneUsageDescription&lt;/key&gt;
+&lt;string&gt;Boop needs your mic to hear what you ask in voice mode.&lt;/string&gt;
+&lt;key&gt;NSSpeechRecognitionUsageDescription&lt;/key&gt;
+&lt;string&gt;Boop transcribes your voice on-device to talk to the agent.&lt;/string&gt;</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Implement the permissions helper</div>
+
+  Create <code class="inline">ios/Boop/Voice/VoicePermissions.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> AVFoundation
+<span class="tok-kw">import</span> Speech
+
+<span class="tok-kw">enum</span> <span class="tok-type">VoicePermissionState</span> {
+    <span class="tok-kw">case</span> notDetermined, granted, denied
+}
+
+<span class="tok-kw">enum</span> <span class="tok-type">VoicePermissions</span> {
+    <span class="tok-kw">static func</span> <span class="tok-func">current</span>() -&gt; <span class="tok-type">VoicePermissionState</span> {
+        <span class="tok-kw">let</span> mic = AVAudioApplication.shared.recordPermission
+        <span class="tok-kw">let</span> speech = SFSpeechRecognizer.authorizationStatus()
+        <span class="tok-kw">if</span> mic == .denied || speech == .denied || speech == .restricted { <span class="tok-kw">return</span> .denied }
+        <span class="tok-kw">if</span> mic == .granted &amp;&amp; speech == .authorized { <span class="tok-kw">return</span> .granted }
+        <span class="tok-kw">return</span> .notDetermined
+    }
+
+    <span class="tok-kw">static func</span> <span class="tok-func">request</span>() <span class="tok-kw">async</span> -&gt; <span class="tok-type">VoicePermissionState</span> {
+        <span class="tok-kw">let</span> micGranted = <span class="tok-kw">await</span> AVAudioApplication.requestRecordPermission()
+        <span class="tok-kw">guard</span> micGranted <span class="tok-kw">else</span> { <span class="tok-kw">return</span> .denied }
+        <span class="tok-kw">let</span> speechGranted = <span class="tok-kw">await</span> withCheckedContinuation { (cont: CheckedContinuation&lt;SFSpeechRecognizerAuthorizationStatus, Never&gt;) <span class="tok-kw">in</span>
+            SFSpeechRecognizer.requestAuthorization { status <span class="tok-kw">in</span> cont.resume(returning: status) }
+        }
+        <span class="tok-kw">return</span> speechGranted == .authorized ? .granted : .denied
+    }
+
+    <span class="tok-kw">static func</span> <span class="tok-func">openSettings</span>() {
+        <span class="tok-kw">if let</span> url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+    }
+}</code></pre>
+
+  <div class="callout warn"><div class="head">iOS 17 deprecation</div>If your deployment target is older, replace <code class="inline">AVAudioApplication.shared.recordPermission</code> with <code class="inline">AVAudioSession.sharedInstance().recordPermission</code> and <code class="inline">AVAudioApplication.requestRecordPermission()</code> with <code class="inline">AVAudioSession.sharedInstance().requestRecordPermission(_:)</code>. The project's deployment target is iOS 17.0, so the AVAudioApplication API is the right one.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Implement the card</div>
+
+  Create <code class="inline">ios/Boop/Views/Voice/VoicePermissionsCard.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> SwiftUI
+
+<span class="tok-kw">struct</span> <span class="tok-type">VoicePermissionsCard</span>: <span class="tok-type">View</span> {
+    <span class="tok-kw">let</span> denied: <span class="tok-type">Bool</span>
+    <span class="tok-kw">let</span> onAllow: () <span class="tok-kw">async</span> -&gt; <span class="tok-type">Void</span>
+    <span class="tok-kw">let</span> onCancel: () -&gt; <span class="tok-type">Void</span>
+
+    <span class="tok-kw">var</span> body: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+        VStack(spacing: <span class="tok-num">20</span>) {
+            Image(systemName: <span class="tok-str">"waveform"</span>)
+                .font(.system(size: <span class="tok-num">36</span>, weight: .light))
+                .foregroundStyle(.white)
+                .padding(.bottom, <span class="tok-num">4</span>)
+            VStack(spacing: <span class="tok-num">8</span>) {
+                Text(<span class="tok-str">"Voice mode"</span>).font(.title2.weight(.semibold)).foregroundStyle(.white)
+                Text(denied
+                    ? <span class="tok-str">"Mic or speech recognition is off for Boop. Open Settings to enable."</span>
+                    : <span class="tok-str">"Boop hears you on-device. Transcription never leaves your phone."</span>)
+                    .font(.system(size: <span class="tok-num">14</span>))
+                    .foregroundStyle(.white.opacity(<span class="tok-num">0.7</span>))
+                    .multilineTextAlignment(.center)
+            }
+            VStack(spacing: <span class="tok-num">10</span>) {
+                Button {
+                    <span class="tok-kw">if</span> denied {
+                        VoicePermissions.openSettings()
+                    } <span class="tok-kw">else</span> {
+                        Task { <span class="tok-kw">await</span> onAllow() }
+                    }
+                } label: {
+                    Text(denied ? <span class="tok-str">"Open Settings"</span> : <span class="tok-str">"Allow"</span>)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, <span class="tok-num">12</span>)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: <span class="tok-num">12</span>))
+                        .foregroundStyle(.white)
+                }
+                Button(<span class="tok-str">"Not now"</span>, action: onCancel)
+                    .foregroundStyle(.white.opacity(<span class="tok-num">0.7</span>))
+            }
+        }
+        .padding(<span class="tok-num">24</span>)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: <span class="tok-num">20</span>))
+        .padding(<span class="tok-num">24</span>)
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Hook into <code class="inline">VoiceModeSheet</code></div>
+
+  In <code class="inline">VoiceModeSheet.swift</code>, replace the ZStack contents with a conditional overlay:
+
+  <pre><code>ZStack {
+    Color.black.ignoresSafeArea()
+    VStack(spacing: <span class="tok-num">24</span>) { header; Spacer(); orb; subtitle; Spacer(); controls }
+        .padding(.horizontal, <span class="tok-num">24</span>).padding(.vertical, <span class="tok-num">32</span>)
+
+    <span class="tok-kw">if</span> store.state == .permissionPending || store.state == .permissionDenied {
+        VoicePermissionsCard(
+            denied: store.state == .permissionDenied,
+            onAllow: { <span class="tok-kw">await</span> requestPermissions() },
+            onCancel: { dismiss() }
+        )
+    }
+}
+.task { <span class="tok-kw">await</span> checkOrPromptPermissions() }
+
+<span class="tok-kw">private func</span> <span class="tok-func">checkOrPromptPermissions</span>() <span class="tok-kw">async</span> {
+    <span class="tok-kw">let</span> status = VoicePermissions.current()
+    <span class="tok-kw">switch</span> status {
+    <span class="tok-kw">case</span> .granted: store.state = .listening
+    <span class="tok-kw">case</span> .denied: store.state = .permissionDenied
+    <span class="tok-kw">case</span> .notDetermined: store.state = .permissionPending
+    }
+}
+
+<span class="tok-kw">private func</span> <span class="tok-func">requestPermissions</span>() <span class="tok-kw">async</span> {
+    <span class="tok-kw">let</span> status = <span class="tok-kw">await</span> VoicePermissions.request()
+    store.state = (status == .granted) ? .listening : .permissionDenied
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Build + manual smoke</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -5 &amp;&amp; cd ..</code></pre>
+    <p>Run on simulator. First tap of dock mic shows the card. Tap Allow → two system dialogs (mic, speech) → orb screen with "LISTENING" label.</p>
+    <div class="expect"><b>Expected:</b> BUILD SUCCEEDED. First-launch consent flow looks correct.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 6</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/Voice/VoicePermissions.swift ios/Boop/Views/Voice/VoicePermissionsCard.swift ios/Boop/Views/Voice/VoiceModeSheet.swift ios/Boop/Resources/Info.plist
+git commit -m <span class="tok-str">"feat(ios): voice permissions card + mic/speech consent flow"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<h2 class="phase-h">Phase 5 — iOS audio</h2>
+
+<section class="task" id="task-14">
+  <div class="task-h"><span class="tn">Task 14</span><h3><code class="inline">VoiceSession</code> actor — audio session setup</h3><a class="anchor" href="#task-14">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>ios/Boop/Voice/VoiceSession.swift</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Create the actor skeleton with audio-session lifecycle</div>
+
+  Create <code class="inline">ios/Boop/Voice/VoiceSession.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> AVFoundation
+<span class="tok-kw">import</span> Foundation
+
+<span class="tok-com">/// Owns the AVAudioSession + AVAudioEngine for the lifetime of one
+/// voice-mode sheet. SFSpeech + VAD layered on in Task 15.</span>
+<span class="tok-kw">actor</span> <span class="tok-type">VoiceSession</span> {
+    <span class="tok-kw">private let</span> engine = AVAudioEngine()
+    <span class="tok-kw">private var</span> isActive = <span class="tok-kw">false</span>
+    <span class="tok-kw">private var</span> sessionInterruptObs: NSObjectProtocol?
+    <span class="tok-kw">private var</span> sessionRouteChangeObs: NSObjectProtocol?
+
+    <span class="tok-kw">var</span> onInterrupted: (() -&gt; <span class="tok-type">Void</span>)?
+    <span class="tok-kw">var</span> onRouteChanged: ((AVAudioSession.RouteChangeReason) -&gt; <span class="tok-type">Void</span>)?
+
+    <span class="tok-kw">func</span> <span class="tok-func">activate</span>() <span class="tok-kw">throws</span> {
+        <span class="tok-kw">guard</span> !isActive <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        <span class="tok-kw">let</span> session = AVAudioSession.sharedInstance()
+        <span class="tok-kw">try</span> session.setCategory(.playAndRecord, mode: .voiceChat,
+            options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+        <span class="tok-kw">try</span> session.setActive(<span class="tok-kw">true</span>, options: [.notifyOthersOnDeactivation])
+        installObservers(on: session)
+        isActive = <span class="tok-kw">true</span>
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">deactivate</span>() {
+        <span class="tok-kw">guard</span> isActive <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        <span class="tok-kw">if</span> engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: <span class="tok-num">0</span>)
+        <span class="tok-kw">if let</span> obs = sessionInterruptObs { NotificationCenter.default.removeObserver(obs) }
+        <span class="tok-kw">if let</span> obs = sessionRouteChangeObs { NotificationCenter.default.removeObserver(obs) }
+        sessionInterruptObs = <span class="tok-kw">nil</span>
+        sessionRouteChangeObs = <span class="tok-kw">nil</span>
+        <span class="tok-kw">try</span>? AVAudioSession.sharedInstance().setActive(<span class="tok-kw">false</span>, options: [.notifyOthersOnDeactivation])
+        isActive = <span class="tok-kw">false</span>
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">installObservers</span>(on session: AVAudioSession) {
+        <span class="tok-kw">let</span> nc = NotificationCenter.default
+        sessionInterruptObs = nc.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: .main) { [<span class="tok-kw">weak self</span>] note <span class="tok-kw">in</span>
+            <span class="tok-kw">guard let</span> info = note.userInfo,
+                  <span class="tok-kw">let</span> typeRaw = info[AVAudioSessionInterruptionTypeKey] <span class="tok-kw">as</span>? UInt,
+                  <span class="tok-kw">let</span> type = AVAudioSession.InterruptionType(rawValue: typeRaw) <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+            <span class="tok-kw">if</span> type == .began { Task { <span class="tok-kw">await self</span>?.handleInterruption() } }
+        }
+        sessionRouteChangeObs = nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: .main) { [<span class="tok-kw">weak self</span>] note <span class="tok-kw">in</span>
+            <span class="tok-kw">guard let</span> info = note.userInfo,
+                  <span class="tok-kw">let</span> reasonRaw = info[AVAudioSessionRouteChangeReasonKey] <span class="tok-kw">as</span>? UInt,
+                  <span class="tok-kw">let</span> reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw) <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+            Task { <span class="tok-kw">await self</span>?.handleRouteChange(reason) }
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">handleInterruption</span>() { onInterrupted?() }
+    <span class="tok-kw">private func</span> <span class="tok-func">handleRouteChange</span>(_ reason: AVAudioSession.RouteChangeReason) { onRouteChanged?(reason) }
+
+    <span class="tok-com">// Exposed for Task 15 to install a tap.</span>
+    <span class="tok-kw">var</span> inputFormat: AVAudioFormat { engine.inputNode.outputFormat(forBus: <span class="tok-num">0</span>) }
+    <span class="tok-kw">func</span> <span class="tok-func">installInputTap</span>(bufferSize: AVAudioFrameCount = <span class="tok-num">1024</span>,
+                          block: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -&gt; <span class="tok-type">Void</span>) <span class="tok-kw">throws</span> {
+        engine.inputNode.installTap(onBus: <span class="tok-num">0</span>, bufferSize: bufferSize, format: <span class="tok-kw">nil</span>, block: block)
+        <span class="tok-kw">try</span> engine.start()
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Build</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -5 &amp;&amp; cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> BUILD SUCCEEDED.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/Voice/VoiceSession.swift
+git commit -m <span class="tok-str">"feat(ios): VoiceSession actor — AVAudioSession + engine lifecycle"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-15">
+  <div class="task-h"><span class="tn">Task 15</span><h3><code class="inline">VoiceSession</code> — SFSpeechRecognizer + VAD</h3><a class="anchor" href="#task-15">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Voice/VoiceSession.swift</code></div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Voice/VoiceVAD.swift</code></div>
+    <div><span class="kind test">test</span> <code>ios/BoopTests/VoiceVADTests.swift</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Write the VAD as a pure (unit-testable) struct</div>
+
+  Create <code class="inline">ios/Boop/Voice/VoiceVAD.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> Foundation
+<span class="tok-kw">import</span> AVFoundation
+
+<span class="tok-kw">struct</span> <span class="tok-type">VoiceVADConfig</span> {
+    <span class="tok-kw">var</span> silenceDuration: TimeInterval = <span class="tok-num">1.4</span>
+    <span class="tok-kw">var</span> minUtteranceMs: <span class="tok-type">Double</span> = <span class="tok-num">350</span>
+    <span class="tok-kw">var</span> maxUtteranceMs: <span class="tok-type">Double</span> = <span class="tok-num">30_000</span>
+    <span class="tok-kw">var</span> noiseFloorWindowSec: TimeInterval = <span class="tok-num">2.0</span>
+    <span class="tok-kw">var</span> activeThresholdDB: <span class="tok-type">Double</span> = <span class="tok-num">6</span>  <span class="tok-com">// dB above noise floor counts as voice</span>
+}
+
+<span class="tok-kw">enum</span> <span class="tok-type">VoiceVADEvent</span>: <span class="tok-type">Equatable</span> {
+    <span class="tok-kw">case</span> startedUtterance
+    <span class="tok-kw">case</span> committedUtterance(durationMs: <span class="tok-type">Double</span>)
+    <span class="tok-kw">case</span> rejectedTooShort
+    <span class="tok-kw">case</span> forceCommitted
+}
+
+<span class="tok-kw">final class</span> <span class="tok-type">VoiceVAD</span> {
+    <span class="tok-kw">private let</span> config: <span class="tok-type">VoiceVADConfig</span>
+    <span class="tok-kw">private var</span> noiseFloorDB: <span class="tok-type">Double</span> = -<span class="tok-num">60</span>
+    <span class="tok-kw">private var</span> floorSamples: [<span class="tok-type">Double</span>] = []
+    <span class="tok-kw">private var</span> floorWindowStart: TimeInterval?
+    <span class="tok-kw">private var</span> utteranceStart: TimeInterval?
+    <span class="tok-kw">private var</span> lastVoiceAt: TimeInterval?
+
+    <span class="tok-kw">init</span>(config: <span class="tok-type">VoiceVADConfig</span> = .init()) { <span class="tok-kw">self</span>.config = config }
+
+    <span class="tok-kw">func</span> <span class="tok-func">observe</span>(rmsDB: <span class="tok-type">Double</span>, at: TimeInterval) -&gt; VoiceVADEvent? {
+        <span class="tok-kw">if</span> floorWindowStart == <span class="tok-kw">nil</span> { floorWindowStart = at }
+        <span class="tok-kw">if</span> at - (floorWindowStart ?? at) &lt; config.noiseFloorWindowSec &amp;&amp; utteranceStart == <span class="tok-kw">nil</span> {
+            floorSamples.append(rmsDB)
+            <span class="tok-kw">if</span> floorSamples.count &gt; <span class="tok-num">30</span> { floorSamples.removeFirst() }
+            noiseFloorDB = floorSamples.reduce(<span class="tok-num">0</span>, +) / <span class="tok-type">Double</span>(<span class="tok-type">max</span>(<span class="tok-num">1</span>, floorSamples.count))
+            <span class="tok-kw">return nil</span>
+        }
+
+        <span class="tok-kw">let</span> isVoice = rmsDB &gt; noiseFloorDB + config.activeThresholdDB
+        <span class="tok-kw">if</span> isVoice {
+            <span class="tok-kw">if</span> utteranceStart == <span class="tok-kw">nil</span> { utteranceStart = at; <span class="tok-kw">return</span> .startedUtterance }
+            lastVoiceAt = at
+            <span class="tok-com">// max-utterance safety net</span>
+            <span class="tok-kw">if let</span> start = utteranceStart, (at - start) * <span class="tok-num">1000</span> &gt;= config.maxUtteranceMs {
+                <span class="tok-kw">return</span> commit(reason: .forceCommitted, at: at)
+            }
+            <span class="tok-kw">return nil</span>
+        }
+
+        <span class="tok-kw">guard let</span> start = utteranceStart <span class="tok-kw">else</span> { <span class="tok-kw">return nil</span> }
+        <span class="tok-kw">let</span> silenceFor = at - (lastVoiceAt ?? start)
+        <span class="tok-kw">if</span> silenceFor &gt;= config.silenceDuration {
+            <span class="tok-kw">let</span> ms = (at - start - silenceFor) * <span class="tok-num">1000</span>
+            <span class="tok-kw">if</span> ms &lt; config.minUtteranceMs {
+                resetUtterance(); <span class="tok-kw">return</span> .rejectedTooShort
+            }
+            <span class="tok-kw">return</span> commit(reason: .committedUtterance(durationMs: ms), at: at)
+        }
+        <span class="tok-kw">return nil</span>
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">commit</span>(reason: VoiceVADEvent, at: TimeInterval) -&gt; VoiceVADEvent {
+        resetUtterance()
+        <span class="tok-kw">return</span> reason
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">resetUtterance</span>() {
+        utteranceStart = <span class="tok-kw">nil</span>
+        lastVoiceAt = <span class="tok-kw">nil</span>
+    }
+}
+
+<span class="tok-com">/// Computes RMS power (dB) from a PCM float buffer.</span>
+<span class="tok-kw">func</span> <span class="tok-func">rmsDB</span>(buffer: AVAudioPCMBuffer) -&gt; <span class="tok-type">Double</span> {
+    <span class="tok-kw">guard let</span> channelData = buffer.floatChannelData?[<span class="tok-num">0</span>] <span class="tok-kw">else</span> { <span class="tok-kw">return</span> -<span class="tok-num">120</span> }
+    <span class="tok-kw">let</span> frameCount = <span class="tok-type">Int</span>(buffer.frameLength)
+    <span class="tok-kw">var</span> sumSquares: <span class="tok-type">Double</span> = <span class="tok-num">0</span>
+    <span class="tok-kw">for</span> i <span class="tok-kw">in</span> <span class="tok-num">0</span>..&lt;frameCount {
+        <span class="tok-kw">let</span> s = <span class="tok-type">Double</span>(channelData[i])
+        sumSquares += s * s
+    }
+    <span class="tok-kw">let</span> mean = sumSquares / <span class="tok-type">Double</span>(<span class="tok-type">max</span>(<span class="tok-num">1</span>, frameCount))
+    <span class="tok-kw">guard</span> mean &gt; <span class="tok-num">0</span> <span class="tok-kw">else</span> { <span class="tok-kw">return</span> -<span class="tok-num">120</span> }
+    <span class="tok-kw">return</span> <span class="tok-num">20</span> * <span class="tok-type">log10</span>(<span class="tok-type">sqrt</span>(mean))
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Add unit tests</div>
+
+  Create <code class="inline">ios/BoopTests/VoiceVADTests.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> XCTest
+@testable <span class="tok-kw">import</span> Boop
+
+<span class="tok-kw">final class</span> <span class="tok-type">VoiceVADTests</span>: <span class="tok-type">XCTestCase</span> {
+    <span class="tok-kw">func</span> <span class="tok-func">test_commitsAfterSilence</span>() {
+        <span class="tok-kw">let</span> vad = VoiceVAD(config: .init(silenceDuration: <span class="tok-num">1.0</span>, minUtteranceMs: <span class="tok-num">100</span>))
+        <span class="tok-com">// 2s of noise-floor calibration silence</span>
+        <span class="tok-kw">for</span> i <span class="tok-kw">in</span> <span class="tok-num">0</span>..&lt;<span class="tok-num">20</span> { _ = vad.observe(rmsDB: -<span class="tok-num">60</span>, at: <span class="tok-type">Double</span>(i) * <span class="tok-num">0.1</span>) }
+        <span class="tok-com">// 500ms of voice</span>
+        <span class="tok-kw">var</span> startedAt: <span class="tok-type">Int</span>? = <span class="tok-kw">nil</span>
+        <span class="tok-kw">for</span> i <span class="tok-kw">in</span> <span class="tok-num">20</span>..&lt;<span class="tok-num">25</span> {
+            <span class="tok-kw">if let</span> e = vad.observe(rmsDB: -<span class="tok-num">40</span>, at: <span class="tok-type">Double</span>(i) * <span class="tok-num">0.1</span>), e == .startedUtterance { startedAt = i }
+        }
+        XCTAssertNotNil(startedAt)
+        <span class="tok-com">// 1.1s of silence — should commit</span>
+        <span class="tok-kw">var</span> committed = <span class="tok-kw">false</span>
+        <span class="tok-kw">for</span> i <span class="tok-kw">in</span> <span class="tok-num">25</span>..&lt;<span class="tok-num">37</span> {
+            <span class="tok-kw">if case</span> .committedUtterance? = vad.observe(rmsDB: -<span class="tok-num">60</span>, at: <span class="tok-type">Double</span>(i) * <span class="tok-num">0.1</span>) { committed = <span class="tok-kw">true</span>; <span class="tok-kw">break</span> }
+        }
+        XCTAssertTrue(committed)
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">test_rejectsShortBursts</span>() {
+        <span class="tok-kw">let</span> vad = VoiceVAD(config: .init(silenceDuration: <span class="tok-num">1.0</span>, minUtteranceMs: <span class="tok-num">500</span>))
+        <span class="tok-kw">for</span> i <span class="tok-kw">in</span> <span class="tok-num">0</span>..&lt;<span class="tok-num">20</span> { _ = vad.observe(rmsDB: -<span class="tok-num">60</span>, at: <span class="tok-type">Double</span>(i) * <span class="tok-num">0.1</span>) }
+        _ = vad.observe(rmsDB: -<span class="tok-num">40</span>, at: <span class="tok-num">2.0</span>)  <span class="tok-com">// 100ms burst</span>
+        <span class="tok-kw">var</span> rejected = <span class="tok-kw">false</span>
+        <span class="tok-kw">for</span> i <span class="tok-kw">in</span> <span class="tok-num">21</span>..&lt;<span class="tok-num">33</span> {
+            <span class="tok-kw">if</span> vad.observe(rmsDB: -<span class="tok-num">60</span>, at: <span class="tok-type">Double</span>(i) * <span class="tok-num">0.1</span>) == .rejectedTooShort { rejected = <span class="tok-kw">true</span>; <span class="tok-kw">break</span> }
+        }
+        XCTAssertTrue(rejected)
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Extend <code class="inline">VoiceSession</code> with SFSpeech integration</div>
+
+  Add to <code class="inline">VoiceSession.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> Speech
+
+<span class="tok-kw">extension</span> <span class="tok-type">VoiceSession</span> {
+    <span class="tok-kw">func</span> <span class="tok-func">startListening</span>(
+        partial: @escaping @Sendable (<span class="tok-type">String</span>) -&gt; <span class="tok-type">Void</span>,
+        onCommit: @escaping @Sendable (<span class="tok-type">String</span>) -&gt; <span class="tok-type">Void</span>,
+        vad: VoiceVAD = VoiceVAD()
+    ) <span class="tok-kw">throws</span> {
+        <span class="tok-kw">let</span> recognizer = SFSpeechRecognizer(locale: Locale.current)
+        recognizer?.supportsOnDeviceRecognition = <span class="tok-kw">true</span>
+        <span class="tok-kw">guard let</span> recognizer, recognizer.isAvailable <span class="tok-kw">else</span> { <span class="tok-kw">throw</span> NSError(domain: <span class="tok-str">"voice"</span>, code: <span class="tok-num">1</span>) }
+        <span class="tok-kw">let</span> request = SFSpeechAudioBufferRecognitionRequest()
+        request.requiresOnDeviceRecognition = <span class="tok-kw">true</span>
+        request.shouldReportPartialResults = <span class="tok-kw">true</span>
+
+        <span class="tok-kw">var</span> latestTranscript = <span class="tok-str">""</span>
+        <span class="tok-kw">let</span> task = recognizer.recognitionTask(with: request) { result, error <span class="tok-kw">in</span>
+            <span class="tok-kw">if let</span> r = result {
+                latestTranscript = r.bestTranscription.formattedString
+                partial(latestTranscript)
+            }
+        }
+
+        <span class="tok-kw">try</span> installInputTap { buffer, _ <span class="tok-kw">in</span>
+            request.append(buffer)
+            <span class="tok-kw">let</span> db = rmsDB(buffer: buffer)
+            <span class="tok-kw">if case</span> .committedUtterance? = vad.observe(rmsDB: db, at: CACurrentMediaTime()) {
+                request.endAudio()
+                task.finish()
+                <span class="tok-kw">if</span> !latestTranscript.isEmpty { onCommit(latestTranscript) }
+            } <span class="tok-kw">else if</span> vad.observe(rmsDB: db, at: CACurrentMediaTime()) == .forceCommitted {
+                request.endAudio()
+                task.finish()
+                <span class="tok-kw">if</span> !latestTranscript.isEmpty { onCommit(latestTranscript) }
+            }
+        }
+    }
+}</code></pre>
+
+  <div class="callout warn"><div class="head">Concurrency note</div>The tap closure isn't <code class="inline">@Sendable</code>-friendly with mutable captures. In practice you'll want the partial-transcript state on the calling actor and the VAD wrapped in a serial queue. Refactor while integrating with <code class="inline">VoiceModeStore</code> in Task 18 if Swift Concurrency complaints get loud.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Build + run unit tests</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate
+xcodebuild test -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> -only-testing:BoopTests/VoiceVADTests 2&gt;&amp;1 | tail -10
+cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> 2/2 tests pass.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/Voice/VoiceVAD.swift ios/Boop/Voice/VoiceSession.swift ios/BoopTests/VoiceVADTests.swift
+git commit -m <span class="tok-str">"feat(ios): SFSpeechRecognizer + VAD wired into VoiceSession"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-16">
+  <div class="task-h"><span class="tn">Task 16</span><h3>Extend <code class="inline">SSEClient</code> with <code class="inline">tts_*</code> events</h3><a class="anchor" href="#task-16">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Networking/BoopClient.swift</code> (around <code class="inline">StreamEvent</code> enum line 278 + the parser around line 416)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Add new cases to <code class="inline">StreamEvent</code></div>
+
+  In <code class="inline">BoopClient.swift</code> line 278, extend the enum:
+
+  <pre><code><span class="tok-kw">enum</span> <span class="tok-type">StreamEvent</span>: <span class="tok-type">Sendable</span> {
+    <span class="tok-com">// ...existing cases unchanged...</span>
+    <span class="tok-kw">case</span> ttsChunk(conversationId: <span class="tok-type">String</span>, voiceTurnId: <span class="tok-type">String</span>, seq: <span class="tok-type">Int</span>, audioBase64: <span class="tok-type">String</span>, mime: <span class="tok-type">String</span>)
+    <span class="tok-kw">case</span> ttsDone(conversationId: <span class="tok-type">String</span>, voiceTurnId: <span class="tok-type">String</span>)
+    <span class="tok-kw">case</span> ttsError(conversationId: <span class="tok-type">String</span>, voiceTurnId: <span class="tok-type">String</span>, reason: <span class="tok-type">String</span>)
+    <span class="tok-kw">case</span> ttsUseLocal(conversationId: <span class="tok-type">String</span>, voiceTurnId: <span class="tok-type">String</span>, text: <span class="tok-type">String</span>)
+
+    <span class="tok-com">// extend the conversationId switch:</span>
+    <span class="tok-kw">var</span> conversationId: <span class="tok-type">String</span> {
+        <span class="tok-kw">switch self</span> {
+        <span class="tok-com">// ...existing cases...</span>
+        <span class="tok-kw">case</span> .ttsChunk(<span class="tok-kw">let</span> id, _, _, _, _),
+             .ttsDone(<span class="tok-kw">let</span> id, _),
+             .ttsError(<span class="tok-kw">let</span> id, _, _),
+             .ttsUseLocal(<span class="tok-kw">let</span> id, _, _):
+            <span class="tok-kw">return</span> id
+        }
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Add decoding branches in the SSE parser</div>
+
+  In the same file, find <code class="inline">SSEDelegate</code> (line ~365) and the <code class="inline">parseEvent</code> / event-dispatch switch. Add branches for the four new events. The exact code shape depends on how existing branches look; add alongside them:
+
+  <pre><code><span class="tok-kw">case</span> <span class="tok-str">"tts_chunk"</span>:
+    <span class="tok-kw">guard let</span> cid = data[<span class="tok-str">"conversationId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> vid = data[<span class="tok-str">"voiceTurnId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> seq = data[<span class="tok-str">"seq"</span>] <span class="tok-kw">as</span>? <span class="tok-type">Int</span>,
+          <span class="tok-kw">let</span> audio = data[<span class="tok-str">"audio"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> mime = data[<span class="tok-str">"mime"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span> <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+    onEvent(.ttsChunk(conversationId: cid, voiceTurnId: vid, seq: seq, audioBase64: audio, mime: mime))
+
+<span class="tok-kw">case</span> <span class="tok-str">"tts_done"</span>:
+    <span class="tok-kw">guard let</span> cid = data[<span class="tok-str">"conversationId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> vid = data[<span class="tok-str">"voiceTurnId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span> <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+    onEvent(.ttsDone(conversationId: cid, voiceTurnId: vid))
+
+<span class="tok-kw">case</span> <span class="tok-str">"tts_error"</span>:
+    <span class="tok-kw">guard let</span> cid = data[<span class="tok-str">"conversationId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> vid = data[<span class="tok-str">"voiceTurnId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span> <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+    <span class="tok-kw">let</span> reason = (data[<span class="tok-str">"reason"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>) ?? <span class="tok-str">"unknown"</span>
+    onEvent(.ttsError(conversationId: cid, voiceTurnId: vid, reason: reason))
+
+<span class="tok-kw">case</span> <span class="tok-str">"tts_use_local"</span>:
+    <span class="tok-kw">guard let</span> cid = data[<span class="tok-str">"conversationId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> vid = data[<span class="tok-str">"voiceTurnId"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span>,
+          <span class="tok-kw">let</span> text = data[<span class="tok-str">"text"</span>] <span class="tok-kw">as</span>? <span class="tok-type">String</span> <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+    onEvent(.ttsUseLocal(conversationId: cid, voiceTurnId: vid, text: text))</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Add a stale-turn-id drop guard at the consumer level (VoiceModeStore wires this in Task 18)</div>
+    <p>No code change here — just confirm the new cases hold <code class="inline">voiceTurnId</code> so a consumer can filter via <code class="inline">store.currentTurnId == evt.voiceTurnId</code>.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Build</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -5 &amp;&amp; cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> BUILD SUCCEEDED.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/Networking/BoopClient.swift
+git commit -m <span class="tok-str">"feat(ios): SSE StreamEvent gains tts_chunk/done/error/use_local cases"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-17">
+  <div class="task-h"><span class="tn">Task 17</span><h3><code class="inline">AudioQueue</code> actor — AVAudioPlayerNode + drain</h3><a class="anchor" href="#task-17">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind create">create</span> <code>ios/Boop/Voice/AudioQueue.swift</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Implement</div>
+
+  Create <code class="inline">ios/Boop/Voice/AudioQueue.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> AVFoundation
+<span class="tok-kw">import</span> Foundation
+
+<span class="tok-com">/// Decodes base64 mp3 chunks (ElevenLabs Flash v2.5 default) and
+/// plays them in order via AVAudioPlayerNode. Reorders out-of-order
+/// chunks within a small jitter buffer. Tap-orb-to-skip flushes the
+/// queue and resolves drain().</span>
+<span class="tok-kw">actor</span> <span class="tok-type">AudioQueue</span> {
+    <span class="tok-kw">private let</span> engine = AVAudioEngine()
+    <span class="tok-kw">private let</span> player = AVAudioPlayerNode()
+    <span class="tok-kw">private var</span> pending: [<span class="tok-type">Int</span>: Data] = [:]      <span class="tok-com">// seq -&gt; mp3 bytes</span>
+    <span class="tok-kw">private var</span> nextSeq: <span class="tok-type">Int</span> = <span class="tok-num">0</span>
+    <span class="tok-kw">private var</span> isStarted: <span class="tok-type">Bool</span> = <span class="tok-kw">false</span>
+    <span class="tok-kw">private var</span> drainContinuation: CheckedContinuation&lt;<span class="tok-type">Void</span>, Never&gt;?
+    <span class="tok-kw">private var</span> finalChunkSeq: <span class="tok-type">Int</span>? = <span class="tok-kw">nil</span>
+
+    <span class="tok-kw">var</span> onFirstPlay: (() -&gt; <span class="tok-type">Void</span>)?
+
+    <span class="tok-kw">func</span> <span class="tok-func">attachToEngine</span>() <span class="tok-kw">throws</span> {
+        <span class="tok-kw">guard</span> !isStarted <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: <span class="tok-kw">nil</span>)
+        <span class="tok-kw">try</span> engine.start()
+        player.play()
+        isStarted = <span class="tok-kw">true</span>
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">enqueue</span>(seq: <span class="tok-type">Int</span>, audioBase64: <span class="tok-type">String</span>) <span class="tok-kw">async</span> {
+        <span class="tok-kw">guard let</span> data = Data(base64Encoded: audioBase64) <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        pending[seq] = data
+        <span class="tok-kw">await</span> drainSequential()
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">markDone</span>() {
+        finalChunkSeq = (pending.keys.max() ?? nextSeq) - <span class="tok-num">1</span>
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">drain</span>() <span class="tok-kw">async</span> {
+        <span class="tok-kw">if</span> pending.isEmpty &amp;&amp; player.scheduledTime(forNodeTime: AVAudioTime(hostTime: <span class="tok-num">0</span>)) == <span class="tok-kw">nil</span> { <span class="tok-kw">return</span> }
+        <span class="tok-kw">await</span> withCheckedContinuation { (cont: CheckedContinuation&lt;<span class="tok-type">Void</span>, Never&gt;) <span class="tok-kw">in</span>
+            drainContinuation = cont
+        }
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">flush</span>() {
+        pending.removeAll()
+        player.stop()
+        player.reset()
+        player.play()
+        drainContinuation?.resume()
+        drainContinuation = <span class="tok-kw">nil</span>
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">teardown</span>() {
+        player.stop()
+        engine.stop()
+        pending.removeAll()
+        drainContinuation?.resume()
+        drainContinuation = <span class="tok-kw">nil</span>
+        isStarted = <span class="tok-kw">false</span>
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">drainSequential</span>() <span class="tok-kw">async</span> {
+        <span class="tok-kw">while let</span> data = pending.removeValue(forKey: nextSeq) {
+            <span class="tok-kw">do</span> { <span class="tok-kw">try await</span> schedule(data: data) }
+            <span class="tok-kw">catch</span> { <span class="tok-kw">break</span> }
+            nextSeq += <span class="tok-num">1</span>
+        }
+        <span class="tok-kw">if</span> pending.isEmpty, <span class="tok-kw">let</span> _ = finalChunkSeq {
+            drainContinuation?.resume()
+            drainContinuation = <span class="tok-kw">nil</span>
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">schedule</span>(data: Data) <span class="tok-kw">async throws</span> {
+        <span class="tok-kw">let</span> tmp = FileManager.default.temporaryDirectory.appendingPathComponent(<span class="tok-str">"tts-\(UUID().uuidString).mp3"</span>)
+        <span class="tok-kw">try</span> data.write(to: tmp)
+        <span class="tok-kw">let</span> file = <span class="tok-kw">try</span> AVAudioFile(forReading: tmp)
+        <span class="tok-kw">var</span> firstScheduled = <span class="tok-kw">false</span>
+        <span class="tok-kw">await</span> withCheckedContinuation { (cont: CheckedContinuation&lt;<span class="tok-type">Void</span>, Never&gt;) <span class="tok-kw">in</span>
+            player.scheduleFile(file, at: <span class="tok-kw">nil</span>, completionCallbackType: .dataPlayedBack) { [<span class="tok-kw">weak self</span>] _ <span class="tok-kw">in</span>
+                <span class="tok-kw">try</span>? FileManager.default.removeItem(at: tmp)
+                cont.resume()
+            }
+            <span class="tok-kw">if</span> !firstScheduled { firstScheduled = <span class="tok-kw">true</span>; onFirstPlay?() }
+        }
+    }
+}</code></pre>
+
+  <div class="callout warn"><div class="head">Practical caveat</div>Writing each mp3 chunk to a temp file is the most pragmatic path because <code class="inline">AVAudioPlayerNode.scheduleBuffer</code> wants <code class="inline">AVAudioPCMBuffer</code>, not encoded data — and decoding mp3 yourself via <code class="inline">AVAudioConverter</code> is more code. Temp files are cleaned up in the completion callback. If file-system pressure becomes an issue during dogfood, switch to <code class="inline">AVAudioConverter</code> + buffer-based scheduling.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Build</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -5 &amp;&amp; cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> BUILD SUCCEEDED.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/Voice/AudioQueue.swift
+git commit -m <span class="tok-str">"feat(ios): AudioQueue actor — chunk reassembly + AVAudioPlayerNode"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<h2 class="phase-h">Phase 6 — iOS UX</h2>
+
+<section class="task" id="task-18">
+  <div class="task-h"><span class="tn">Task 18</span><h3>State machine + Lottie wiring</h3><a class="anchor" href="#task-18">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/Boop/State/VoiceModeStore.swift</code></div>
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Views/Voice/VoiceModeSheet.swift</code></div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Resources/lottie/listening.json</code> (download a pick from candidates list)</div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Resources/lottie/thinking.json</code></div>
+    <div><span class="kind create">create</span> <code>ios/Boop/Resources/lottie/speaking.json</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Download Lottie animations</div>
+
+  Pick one candidate per state from the design's <a href="../specs/2026-05-23-ios-voice-m2-design.html#visual">Visual treatment</a> section. From each LottieFiles page, click "Download" and choose "Lottie JSON". Save into:
+
+  <pre class="lang-bash"><code>ios/Boop/Resources/lottie/listening.json
+ios/Boop/Resources/lottie/thinking.json
+ios/Boop/Resources/lottie/speaking.json</code></pre>
+
+  <div class="callout warn"><div class="head">If the file's tint layer isn't named <code class="inline">orb-fill</code></div>Open the JSON, search for the visible <code class="inline">"ty":"fl"</code> (Fill) entry that drives the main orb color, rename its parent layer's <code class="inline">"nm"</code> field to <code class="inline">"orb-fill"</code>. Or change the keypath string in <code class="inline">LottieOrbView.applyTint</code> to match the layer name in your chosen file.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Flesh out <code class="inline">VoiceModeStore</code> with wires for VoiceSession + AudioQueue + SSEConnection</div>
+
+  Replace <code class="inline">ios/Boop/State/VoiceModeStore.swift</code> contents:
+
+  <pre><code><span class="tok-kw">import</span> SwiftUI
+<span class="tok-kw">import</span> Observation
+
+@Observable
+@MainActor
+<span class="tok-kw">final class</span> <span class="tok-type">VoiceModeStore</span> {
+    <span class="tok-kw">var</span> state: <span class="tok-type">VoiceState</span> = .permissionPending
+    <span class="tok-kw">var</span> transcript: <span class="tok-type">String</span> = <span class="tok-str">""</span>
+    <span class="tok-kw">var</span> assistantText: <span class="tok-type">String</span> = <span class="tok-str">""</span>
+    <span class="tok-kw">var</span> currentTurnId: <span class="tok-type">String</span>?
+    <span class="tok-kw">var</span> isMuted: <span class="tok-type">Bool</span> = <span class="tok-kw">false</span>
+
+    <span class="tok-kw">private let</span> session = VoiceSession()
+    <span class="tok-kw">private let</span> audio = AudioQueue()
+    <span class="tok-kw">private var</span> sseTask: Task&lt;<span class="tok-type">Void</span>, Never&gt;?
+    <span class="tok-kw">private let</span> client: BoopClient
+    <span class="tok-kw">private let</span> conversationId: <span class="tok-type">String</span>
+    <span class="tok-kw">private let</span> threadId: <span class="tok-type">String</span>
+
+    <span class="tok-kw">init</span>(client: BoopClient, conversationId: <span class="tok-type">String</span>, threadId: <span class="tok-type">String</span>) {
+        <span class="tok-kw">self</span>.client = client
+        <span class="tok-kw">self</span>.conversationId = conversationId
+        <span class="tok-kw">self</span>.threadId = threadId
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">enter</span>() <span class="tok-kw">async</span> {
+        <span class="tok-kw">do</span> {
+            <span class="tok-kw">try await</span> session.activate()
+            <span class="tok-kw">try await</span> audio.attachToEngine()
+            state = .listening
+            <span class="tok-kw">try await</span> startListening()
+            sseTask = Task { <span class="tok-kw">await self</span>.consumeSSE() }
+        } <span class="tok-kw">catch</span> {
+            state = .error(message: error.localizedDescription)
+        }
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">exit</span>() <span class="tok-kw">async</span> {
+        sseTask?.cancel(); sseTask = <span class="tok-kw">nil</span>
+        <span class="tok-kw">await</span> audio.teardown()
+        <span class="tok-kw">await</span> session.deactivate()
+        state = .permissionPending
+        transcript = <span class="tok-str">""</span>; assistantText = <span class="tok-str">""</span>; currentTurnId = <span class="tok-kw">nil</span>; isMuted = <span class="tok-kw">false</span>
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">toggleMute</span>() {
+        isMuted.toggle()
+        state = isMuted ? .paused : .listening
+        <span class="tok-com">// TODO: actually pause the input tap or drop frames</span>
+    }
+
+    <span class="tok-kw">func</span> <span class="tok-func">skipSpeaking</span>() <span class="tok-kw">async</span> {
+        <span class="tok-kw">guard</span> state == .speaking <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        <span class="tok-kw">await</span> audio.flush()
+        state = .listening
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">startListening</span>() <span class="tok-kw">async throws</span> {
+        <span class="tok-kw">try await</span> session.startListening(
+            partial: { [<span class="tok-kw">weak self</span>] t <span class="tok-kw">in</span> Task { @MainActor <span class="tok-kw">in self</span>?.transcript = t } },
+            onCommit: { [<span class="tok-kw">weak self</span>] t <span class="tok-kw">in</span> Task { @MainActor <span class="tok-kw">in await self</span>?.commitTurn(text: t) } }
+        )
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">commitTurn</span>(text: <span class="tok-type">String</span>) <span class="tok-kw">async</span> {
+        <span class="tok-kw">guard</span> !text.isEmpty <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+        <span class="tok-kw">let</span> turnId = UUID().uuidString
+        currentTurnId = turnId
+        state = .thinking
+        <span class="tok-kw">do</span> {
+            <span class="tok-kw">try await</span> client.sendInbound(text: text, threadId: threadId, source: <span class="tok-str">"voice"</span>, voiceTurnId: turnId)
+        } <span class="tok-kw">catch</span> {
+            state = .error(message: <span class="tok-str">"Couldn't reach boop — tap to retry"</span>)
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">consumeSSE</span>() <span class="tok-kw">async</span> {
+        <span class="tok-kw">let</span> conn = client.streamSSE(threadId: threadId)
+        <span class="tok-kw">for await</span> event <span class="tok-kw">in</span> conn.subscribe() {
+            <span class="tok-kw">guard</span> event.conversationId == conversationId <span class="tok-kw">else</span> { <span class="tok-kw">continue</span> }
+            <span class="tok-kw">await</span> apply(event)
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">apply</span>(_ event: StreamEvent) <span class="tok-kw">async</span> {
+        <span class="tok-kw">switch</span> event {
+        <span class="tok-kw">case</span> .delta(_, <span class="tok-kw">let</span> text, _):
+            assistantText += text
+        <span class="tok-kw">case</span> .ttsChunk(_, <span class="tok-kw">let</span> vid, <span class="tok-kw">let</span> seq, <span class="tok-kw">let</span> audio64, _):
+            <span class="tok-kw">guard</span> vid == currentTurnId <span class="tok-kw">else</span> { <span class="tok-kw">return</span> } <span class="tok-com">// drop stale</span>
+            <span class="tok-kw">if</span> state == .thinking { state = .speaking }
+            <span class="tok-kw">await</span> audio.enqueue(seq: seq, audioBase64: audio64)
+        <span class="tok-kw">case</span> .ttsUseLocal(_, <span class="tok-kw">let</span> vid, <span class="tok-kw">let</span> text):
+            <span class="tok-kw">guard</span> vid == currentTurnId <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+            state = .speaking
+            speakLocally(text: text)
+        <span class="tok-kw">case</span> .ttsDone(_, <span class="tok-kw">let</span> vid):
+            <span class="tok-kw">guard</span> vid == currentTurnId <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+            <span class="tok-kw">await</span> audio.drain()
+            state = .listening
+        <span class="tok-kw">case</span> .ttsError(_, <span class="tok-kw">let</span> vid, <span class="tok-kw">let</span> reason):
+            <span class="tok-kw">guard</span> vid == currentTurnId <span class="tok-kw">else</span> { <span class="tok-kw">return</span> }
+            state = .error(message: reason)
+        <span class="tok-kw">default</span>: <span class="tok-kw">break</span>
+        }
+    }
+
+    <span class="tok-kw">private func</span> <span class="tok-func">speakLocally</span>(text: <span class="tok-type">String</span>) {
+        <span class="tok-kw">let</span> utter = AVSpeechUtterance(string: text)
+        utter.voice = AVSpeechSynthesisVoice(language: <span class="tok-str">"en-US"</span>)
+        AVSpeechSynthesizer().speak(utter)
+    }
+}</code></pre>
+
+  <div class="callout warn"><div class="head">Sendable + actor caveats</div>This file pushes against Swift's strict concurrency. The current XcodeGen config uses <code class="inline">SWIFT_STRICT_CONCURRENCY: targeted</code>. If you hit a wall of warnings/errors, narrow the actor isolation: make <code class="inline">commitTurn</code>, <code class="inline">apply</code>, etc. non-<code class="inline">async</code> where they can be, or wrap with <code class="inline">MainActor.assumeIsolated { ... }</code>. The intent (state on main, audio/session on actors) is what matters.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Add a tiny helper on <code class="inline">BoopClient</code></div>
+
+  Check the existing <code class="inline">BoopClient</code> for a method that posts to <code class="inline">/inbound</code>. If it already takes optional <code class="inline">source</code>/<code class="inline">voiceTurnId</code>, skip. Otherwise add an overload:
+
+  <pre><code><span class="tok-kw">extension</span> <span class="tok-type">BoopClient</span> {
+    <span class="tok-kw">func</span> <span class="tok-func">sendInbound</span>(text: <span class="tok-type">String</span>, threadId: <span class="tok-type">String</span>, source: <span class="tok-type">String</span>? = <span class="tok-kw">nil</span>, voiceTurnId: <span class="tok-type">String</span>? = <span class="tok-kw">nil</span>) <span class="tok-kw">async throws</span> {
+        <span class="tok-kw">var</span> body: [<span class="tok-type">String</span>: <span class="tok-type">Any</span>] = [<span class="tok-str">"text"</span>: text, <span class="tok-str">"threadId"</span>: threadId]
+        <span class="tok-kw">if let</span> source { body[<span class="tok-str">"source"</span>] = source }
+        <span class="tok-kw">if let</span> voiceTurnId { body[<span class="tok-str">"voiceTurnId"</span>] = voiceTurnId }
+        _ = <span class="tok-kw">try await</span> post(<span class="tok-str">"/channels/ios/inbound"</span>, body: body)
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Update <code class="inline">VoiceModeSheet</code> to render Lottie per state</div>
+
+  Replace the placeholder <code class="inline">orb</code> in <code class="inline">VoiceModeSheet.swift</code> with state-driven Lottie selection:
+
+  <pre><code><span class="tok-kw">private var</span> orb: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+    Group {
+        <span class="tok-kw">switch</span> store.state {
+        <span class="tok-kw">case</span> .listening:
+            LottieOrbView(name: <span class="tok-str">"listening"</span>, tint: threadTint)
+        <span class="tok-kw">case</span> .thinking:
+            LottieOrbView(name: <span class="tok-str">"thinking"</span>, tint: threadTint)
+        <span class="tok-kw">case</span> .speaking:
+            LottieOrbView(name: <span class="tok-str">"speaking"</span>, tint: threadTint)
+                .onTapGesture { Task { <span class="tok-kw">await</span> store.skipSpeaking() } }
+        <span class="tok-kw">case</span> .paused:
+            Circle().fill(Color.gray.opacity(<span class="tok-num">0.2</span>))
+                .overlay(Image(systemName: <span class="tok-str">"pause.fill"</span>).foregroundStyle(.white).font(.system(size: <span class="tok-num">32</span>)))
+        <span class="tok-kw">case</span> .error:
+            Circle().fill(Color.red.opacity(<span class="tok-num">0.2</span>))
+                .overlay(Image(systemName: <span class="tok-str">"exclamationmark.triangle.fill"</span>).foregroundStyle(.red).font(.system(size: <span class="tok-num">32</span>)))
+        <span class="tok-kw">default</span>:
+            Color.clear
+        }
+    }
+    .frame(width: <span class="tok-num">160</span>, height: <span class="tok-num">160</span>)
+    .animation(.easeOut(duration: <span class="tok-num">0.28</span>), value: store.state)
+    .accessibilityIdentifier(<span class="tok-str">"voice.orb.\(stateLabel.lowercased())"</span>)
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Build + manual smoke against a real boop instance</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate &amp;&amp; xcodebuild -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> build 2&gt;&amp;1 | tail -5 &amp;&amp; cd ..</code></pre>
+    <p>Launch on a physical device (simulators have flaky mic input). Tap the dock mic. Speak. Release. Watch the orb transition listening → thinking → speaking → listening. If ELEVENLABS_API_KEY is set on the server, you hear ElevenLabs audio. Otherwise AVSpeech.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 6</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/State/VoiceModeStore.swift ios/Boop/Views/Voice/VoiceModeSheet.swift ios/Boop/Networking/BoopClient.swift ios/Boop/Resources/lottie/
+git commit -m <span class="tok-str">"feat(ios): wire VoiceModeStore state machine + Lottie orbs"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-19">
+  <div class="task-h"><span class="tn">Task 19</span><h3>Controls polish + Reduce Motion + accessibility</h3><a class="anchor" href="#task-19">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/Boop/Views/Voice/VoiceModeSheet.swift</code></div>
+    <div><span class="kind create">create</span> <code>ios/BoopUITests/VoiceModeUITests.swift</code></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Apply Reduce Motion fallback to the orb</div>
+
+  Already handled inside <code class="inline">LottieOrbView</code> (Task 11). Confirm by enabling Settings → Accessibility → Motion → Reduce Motion on the simulator and re-running. The orb should hold at frame 0.
+
+  Also add a static SF Symbol fallback at the <code class="inline">VoiceModeSheet</code> level when Reduce Motion is on, in case the Lottie color provider doesn't render correctly without animation:
+
+  <pre><code>@Environment(\.<span class="tok-type">accessibilityReduceMotion</span>) <span class="tok-kw">private var</span> reduceMotion
+
+<span class="tok-kw">private var</span> orb: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+    <span class="tok-kw">if</span> reduceMotion {
+        <span class="tok-kw">return</span> AnyView(staticOrb)
+    } <span class="tok-kw">else</span> {
+        <span class="tok-kw">return</span> AnyView(animatedOrb)
+    }
+}
+
+<span class="tok-kw">private var</span> staticOrb: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+    Image(systemName: staticSymbol)
+        .font(.system(size: <span class="tok-num">88</span>, weight: .light))
+        .foregroundStyle(threadTint)
+        .frame(width: <span class="tok-num">160</span>, height: <span class="tok-num">160</span>)
+}
+
+<span class="tok-kw">private var</span> staticSymbol: <span class="tok-type">String</span> {
+    <span class="tok-kw">switch</span> store.state {
+    <span class="tok-kw">case</span> .listening: <span class="tok-kw">return</span> <span class="tok-str">"waveform"</span>
+    <span class="tok-kw">case</span> .thinking: <span class="tok-kw">return</span> <span class="tok-str">"clock"</span>
+    <span class="tok-kw">case</span> .speaking: <span class="tok-kw">return</span> <span class="tok-str">"speaker.wave.2.fill"</span>
+    <span class="tok-kw">case</span> .paused: <span class="tok-kw">return</span> <span class="tok-str">"mic.slash"</span>
+    <span class="tok-kw">case</span> .error: <span class="tok-kw">return</span> <span class="tok-str">"exclamationmark.triangle.fill"</span>
+    <span class="tok-kw">default</span>: <span class="tok-kw">return</span> <span class="tok-str">"waveform"</span>
+    }
+}</code></pre>
+
+  Rename your existing <code class="inline">orb</code> getter to <code class="inline">animatedOrb</code>.
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Wire mute icon, exit, keyboard handoff actions</div>
+
+  In the <code class="inline">controls</code> getter of <code class="inline">VoiceModeSheet</code>, finalize:
+
+  <pre><code><span class="tok-kw">private var</span> controls: <span class="tok-kw">some</span> <span class="tok-type">View</span> {
+    HStack(spacing: <span class="tok-num">32</span>) {
+        circleButton(systemName: store.isMuted ? <span class="tok-str">"mic.slash.fill"</span> : <span class="tok-str">"mic.fill"</span>) {
+            store.toggleMute()
+        }
+        .accessibilityIdentifier(<span class="tok-str">"voice.mute"</span>)
+        .accessibilityLabel(store.isMuted ? <span class="tok-str">"Unmute"</span> : <span class="tok-str">"Mute"</span>)
+
+        circleButton(systemName: <span class="tok-str">"xmark"</span>, ring: .red) {
+            Task { <span class="tok-kw">await</span> store.exit(); dismiss() }
+        }
+        .accessibilityIdentifier(<span class="tok-str">"voice.exit.large"</span>)
+        .accessibilityLabel(<span class="tok-str">"Exit voice mode"</span>)
+
+        circleButton(systemName: <span class="tok-str">"keyboard"</span>) {
+            onKeyboardHandoff()
+            Task { <span class="tok-kw">await</span> store.exit(); dismiss() }
+        }
+        .accessibilityIdentifier(<span class="tok-str">"voice.keyboard"</span>)
+        .accessibilityLabel(<span class="tok-str">"Switch to keyboard"</span>)
+    }
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Add a UI test for the open/close + permission flow</div>
+
+  Create <code class="inline">ios/BoopUITests/VoiceModeUITests.swift</code>:
+
+  <pre><code><span class="tok-kw">import</span> XCTest
+
+<span class="tok-kw">final class</span> <span class="tok-type">VoiceModeUITests</span>: <span class="tok-type">XCTestCase</span> {
+    <span class="tok-kw">func</span> <span class="tok-func">test_openVoiceMode_andDismiss</span>() <span class="tok-kw">throws</span> {
+        <span class="tok-kw">let</span> app = XCUIApplication()
+        app.launchArguments += [<span class="tok-str">"--ui-test-bypass-pairing"</span>]
+        app.launch()
+
+        <span class="tok-kw">let</span> mic = app.buttons[<span class="tok-str">"dock.voice"</span>]
+        XCTAssertTrue(mic.waitForExistence(timeout: <span class="tok-num">5</span>))
+        mic.tap()
+
+        <span class="tok-kw">let</span> orb = app.otherElements.matching(identifier: <span class="tok-str">"voice.orb.listening"</span>).firstMatch
+        XCTAssertTrue(orb.waitForExistence(timeout: <span class="tok-num">5</span>) || app.buttons[<span class="tok-str">"Allow"</span>].exists)
+
+        <span class="tok-kw">let</span> exit = app.buttons[<span class="tok-str">"voice.exit.large"</span>]
+        <span class="tok-kw">if</span> exit.waitForExistence(timeout: <span class="tok-num">3</span>) { exit.tap() }
+        XCTAssertFalse(orb.waitForExistence(timeout: <span class="tok-num">2</span>))
+    }
+}</code></pre>
+
+  <div class="callout warn"><div class="head">Bypass flag</div>You may need to thread the <code class="inline">--ui-test-bypass-pairing</code> arg through BoopApp to skip the pairing screen for UI tests. If you don't have this hook yet, fall back to manual QA for the open/dismiss flow.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Build + run tests</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate
+xcodebuild test -scheme Boop -destination <span class="tok-str">'platform=iOS Simulator,name=iPhone 15'</span> 2&gt;&amp;1 | tail -15
+cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> all tests pass (or skip if bypass flag is missing — UI test still serves as documentation).</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/Boop/Views/Voice/VoiceModeSheet.swift ios/BoopUITests/VoiceModeUITests.swift
+git commit -m <span class="tok-str">"feat(ios): controls polish + Reduce Motion fallback + UI smoke test"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<h2 class="phase-h">Phase 7 — Ship</h2>
+
+<section class="task" id="task-20">
+  <div class="task-h"><span class="tn">Task 20</span><h3>Manual smoke + docs</h3><a class="anchor" href="#task-20">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/README.md</code> (add Voice Mode section + smoke checklist)</div>
+    <div><span class="kind modify">modify</span> <code>Boop IOS Design.md</code> (add M2 status block under the M2 milestone description)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Run the smoke checklist on a physical device (or capable simulator)</div>
+
+  Reference: <a href="../specs/2026-05-23-ios-voice-m2-design.html#test-plan">Test plan — Manual TestFlight smoke checklist</a>. Run each item, jot results in a scratch note.
+
+  Critical items: first-tap permission card, 10-turn continuous loop, AirPods pull mid-speaking, ELEVENLABS_API_KEY unset → AVSpeech fallback works.
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Append "Voice mode" section to <code class="inline">ios/README.md</code></div>
+
+  <pre><code>## Voice mode (M2)
+
+Tap the mic icon on the dock to open voice mode. Voice mode uses Apple
+Speech.framework for on-device transcription and the server's TTS pipeline
+for streamed playback.
+
+Server-side requirements:
+- Set <span class="tok-pun">`</span>ELEVENLABS_API_KEY<span class="tok-pun">`</span> in <span class="tok-pun">`</span>.env<span class="tok-pun">`</span> for streaming voice. Optional —
+  falls back to <span class="tok-pun">`</span>AVSpeechSynthesizer<span class="tok-pun">`</span> on-device if unset.
+- Default voice is "Aria" (<span class="tok-pun">`</span>ELEVENLABS_VOICE_ID<span class="tok-pun">`</span>).
+- Model pinned to <span class="tok-pun">`</span>eleven_flash_v2_5<span class="tok-pun">`</span>.
+
+Permissions: mic + speech recognition (both requested on first tap).
+Voice mode is iPhone-only; backgrounded operation isn't supported.
+
+For local development you can disable the ElevenLabs key to test the
+fallback path: <span class="tok-pun">`</span>ELEVENLABS_API_KEY= npm run dev:server<span class="tok-pun">`</span>.</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Append M2 status block to <code class="inline">Boop IOS Design.md</code></div>
+
+  Under the existing <em>M2 — Voice</em> section heading (around line 129), append:
+
+  <pre><code>**Status (2026-05-23):** Implemented per spec at
+<span class="tok-pun">`</span>docs/superpowers/specs/2026-05-23-ios-voice-m2-design.html<span class="tok-pun">`</span> with plan
+<span class="tok-pun">`</span>docs/superpowers/plans/2026-05-23-ios-voice-m2-plan.html<span class="tok-pun">`</span>. Continuous-
+loop hands-free conversation, ElevenLabs streaming TTS with AVSpeech
+fallback, Lottie orb states, on-device VAD. Barge-in deferred to M2.5.</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Commit</div>
+    <pre class="lang-bash"><code>git add ios/README.md <span class="tok-str">"Boop IOS Design.md"</span>
+git commit -m <span class="tok-str">"docs(ios): voice mode README + Boop IOS Design M2 status block"</span></code></pre>
+  </div>
+
+  </div>
+</section>
+
+<section class="task" id="task-21">
+  <div class="task-h"><span class="tn">Task 21</span><h3>Bump version + push to TestFlight</h3><a class="anchor" href="#task-21">#</a></div>
+  <div class="task-body">
+
+  <div class="files">
+    <div><span class="kind modify">modify</span> <code>ios/project.yml</code> (bump <code class="inline">CURRENT_PROJECT_VERSION</code>)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 1</span>Bump the build number</div>
+
+  In <code class="inline">ios/project.yml</code>, increment <code class="inline">CURRENT_PROJECT_VERSION</code> by one (currently "7" → "8"):
+
+  <pre><code>settings:
+  base:
+    SWIFT_VERSION: <span class="tok-str">"5.10"</span>
+    MARKETING_VERSION: <span class="tok-str">"0.1.0"</span>
+    CURRENT_PROJECT_VERSION: <span class="tok-str">"8"</span>  <span class="tok-com"># was 7</span></code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 2</span>Regenerate + archive</div>
+    <pre class="lang-bash"><code>cd ios &amp;&amp; xcodegen generate
+xcodebuild -scheme Boop -destination <span class="tok-str">'generic/platform=iOS'</span> -archivePath build/Boop.xcarchive archive 2&gt;&amp;1 | tail -10
+cd ..</code></pre>
+    <div class="expect"><b>Expected:</b> <code class="inline">ARCHIVE SUCCEEDED</code>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 3</span>Upload to TestFlight</div>
+    <p>From Xcode Organizer (or via <code class="inline">xcodebuild -exportArchive</code> + Transporter). Wait for the build to finish processing and appear under TestFlight → Internal Testing.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 4</span>Commit + push the branch</div>
+    <pre class="lang-bash"><code>git add ios/project.yml
+git commit -m <span class="tok-str">"chore(ios): bump CURRENT_PROJECT_VERSION to 8 for M2 TestFlight"</span>
+git push origin feat/ios-channel</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="cb">- [ ]</span><span class="sn">Step 5</span>Open a PR (or extend the existing PR #61 description)</div>
+
+  Use the M2 design + plan links in the PR description so reviewers can read context before diving into the diff.
+
+  <pre class="lang-bash"><code>gh pr edit 61 --body-file - &lt;&lt; <span class="tok-str">'EOF'</span>
+## M2 — Voice mode
+
+Adds dedicated voice-mode screen with continuous-loop hands-free
+conversation. ElevenLabs streaming TTS with AVSpeech fallback.
+
+**Spec:** docs/superpowers/specs/2026-05-23-ios-voice-m2-design.html
+**Plan:** docs/superpowers/plans/2026-05-23-ios-voice-m2-plan.html
+
+### Smoke check
+- [ ] 10 consecutive turns work without exiting
+- [ ] First-audio ≤ 1.5s p50 (ElevenLabs path)
+- [ ] ELEVENLABS_API_KEY unset → AVSpeech fallback works
+- [ ] iMessage path unchanged
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF</code></pre>
+  </div>
+
+  </div>
+</section>
+
+</main>
+
+</div>
+
+<footer class="foot">
+  Boop iOS · M2 Voice · implementation plan · 2026-05-23 · 21 tasks across 7 phases. Companion spec: <a href="../specs/2026-05-23-ios-voice-m2-design.html">2026-05-23-ios-voice-m2-design.html</a>.
+</footer>
+
+<script>
+  const themeBtn = document.getElementById("themeToggle");
+  const html = document.documentElement;
+  function applyTheme(t) {
+    if (t === "system") html.removeAttribute("data-theme");
+    else html.setAttribute("data-theme", t);
+    themeBtn.textContent = t === "dark" ? "☀ Light" : t === "light" ? "● System" : "☾ Dark";
+  }
+  const stored = localStorage.getItem("m2-plan-theme") || "system";
+  applyTheme(stored);
+  themeBtn.addEventListener("click", () => {
+    const cur = localStorage.getItem("m2-plan-theme") || "system";
+    const next = cur === "system" ? "dark" : cur === "dark" ? "light" : "system";
+    localStorage.setItem("m2-plan-theme", next);
+    applyTheme(next);
+  });
+
+  const tasks = document.querySelectorAll("section.task");
+  const tocLinks = document.querySelectorAll("aside.toc a");
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        tocLinks.forEach(a => { a.classList.toggle("active", a.getAttribute("href") === "#" + id); });
+      }
+    });
+  }, { rootMargin: "-30% 0px -60% 0px" });
+  tasks.forEach(t => obs.observe(t));
+</script>
+
+</body>
+</html>
