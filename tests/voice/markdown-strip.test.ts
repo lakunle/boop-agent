@@ -31,3 +31,11 @@ test("removes numbered list markers", () => {
 test("preserves URLs as plain text", () => {
   assert.equal(stripMarkdown("see [docs](https://example.com)"), "see docs (https://example.com)");
 });
+
+test("preserves underscores in snake_case identifiers", () => {
+  assert.equal(stripMarkdown("call snake_case_var here"), "call snake_case_var here");
+});
+
+test("still strips underscore-italic surrounded by spaces", () => {
+  assert.equal(stripMarkdown("this is _emphasised_ text"), "this is emphasised text");
+});

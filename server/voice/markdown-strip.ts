@@ -14,7 +14,7 @@ export function stripMarkdown(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/__([^_]+)__/g, "$1")
     .replace(/\*([^*\n]+)\*/g, "$1")
-    .replace(/_([^_\n]+)_/g, "$1")
+    .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, "$1")
     // Markdown links [text](url) -> "text (url)"
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
     // Heading markers
