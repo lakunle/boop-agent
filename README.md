@@ -104,6 +104,15 @@ I'm working on open-sourcing the native iOS app I originally built for this. The
 
 If you want to see what it looked like before I transitioned to an iMessage-based agent, here's [the walkthrough on YouTube](https://www.youtube.com/watch?v=_h2EnRfxMQE).
 
+### iOS voice mode (optional)
+
+Voice mode uses ElevenLabs streaming TTS when `ELEVENLABS_API_KEY` is set,
+and falls back to `AVSpeechSynthesizer` on-device otherwise. Voice transcription
+is always on-device (Apple Speech.framework) — no key needed.
+
+Estimated cost: ~$0.10 per 1k characters on the ElevenLabs Starter plan;
+~$10/week for daily personal use.
+
 ---
 
 ## Prerequisites
