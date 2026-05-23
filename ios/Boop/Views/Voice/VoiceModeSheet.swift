@@ -20,10 +20,32 @@ struct VoiceModeSheet: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 32)
+
+            if store.state == .permissionPending || store.state == .permissionDenied {
+                VoicePermissionsCard(
+                    denied: store.state == .permissionDenied,
+                    onAllow: { await requestPermissions() },
+                    onCancel: { dismiss() }
+                )
+            }
         }
         .preferredColorScheme(.dark)
-        .onAppear { store.enter() }
+        .task { await checkOrPromptPermissions() }
         .onDisappear { store.exit() }
+    }
+
+    private func checkOrPromptPermissions() async {
+        let status = VoicePermissions.current()
+        switch status {
+        case .granted: store.state = .listening
+        case .denied: store.state = .permissionDenied
+        case .notDetermined: store.state = .permissionPending
+        }
+    }
+
+    private func requestPermissions() async {
+        let status = await VoicePermissions.request()
+        store.state = (status == .granted) ? .listening : .permissionDenied
     }
 
     private var header: some View {

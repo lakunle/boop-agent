@@ -51,6 +51,10 @@
     </array>
     <key>NSCameraUsageDescription</key>
     <string>Boop uses the camera so you can attach a photo to a message.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Boop needs your mic to hear what you ask in voice mode.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Boop transcribes your voice on-device to talk to the agent.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Boop uses your photo library to attach images to messages.</string>
     <key>UIApplicationSceneManifest</key>
