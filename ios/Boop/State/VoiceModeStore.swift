@@ -106,7 +106,7 @@ final class VoiceModeStore {
                 voiceTurnId: turnId
             )
         } catch {
-            state = .error(message: "Couldn't reach boop — tap to retry")
+            state = .error(message: "Couldn't reach boop — exit and try again")
         }
     }
 
