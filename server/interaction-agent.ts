@@ -19,6 +19,8 @@ import { broadcast } from "./broadcast.js";
 import { dispatch } from "./channels/index.js";
 import type { ConversationId } from "./channels/types.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
+import { createTtsSidecar, type TtsSidecar } from "./voice/tts-sidecar.js";
+import { readTtsConfig } from "./voice/config.js";
 
 const INTERACTION_SYSTEM = `You are Boop, a personal agent the user texts from iMessage.
 
@@ -498,6 +500,16 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   let deltaSeq = 0;
   setCurrentTurnThreadId(opts.threadId ?? null);
   setCurrentTurnConversationId(opts.threadId ? opts.conversationId : null);
+
+  let ttsSidecar: TtsSidecar | null = null;
+  if (opts.source === "voice" && opts.voiceTurnId) {
+    ttsSidecar = createTtsSidecar({
+      conversationId: opts.conversationId,
+      voiceTurnId: opts.voiceTurnId,
+      config: readTtsConfig(),
+    });
+  }
+
   try {
     for await (const msg of query({
       prompt,
@@ -583,6 +595,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     console.error(`[turn ${tag}] query failed`, err);
     reply = "Sorry — I hit an error processing that. Try again in a moment.";
   } finally {
+    if (ttsSidecar) ttsSidecar.dispose();
     setCurrentTurnThreadId(null);
     setCurrentTurnConversationId(null);
   }

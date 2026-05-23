@@ -132,6 +132,10 @@ const STREAM_EVENTS = new Set([
   "agent_spawned",
   "agent_tool",
   "agent_done",
+  "tts_chunk",
+  "tts_done",
+  "tts_error",
+  "tts_use_local",
 ]);
 
 // ---------- router ----------
