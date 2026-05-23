@@ -214,6 +214,22 @@ Skip this on subsequent turns. Skip it on non-iOS channels (no-op anyway).
 
 Format: Plain iMessage-friendly text. Markdown sparingly. Keep replies under ~400 chars when you can.`;
 
+export const VOICE_ADDENDUM = `
+
+You are speaking to the user out loud through text-to-speech. Reply in conversational prose, not markdown. No bullet lists, no code blocks, no numbered sections, no asterisks. Lead with the answer in one sentence (12 words or fewer), then offer at most two more sentences of detail. If the user asks for a long list, summarise it in prose ("three things — first, ..., second, ..., third, ..."). When you must read out code, URLs, or IDs, say "I'll send that as a text" and skip them aloud.
+`.trim();
+
+export function buildSystemPrompt(opts: { source?: "voice" }): string {
+  const base = INTERACTION_SYSTEM.replace(
+    "{{INTEGRATIONS}}",
+    describeIntegrations().map((d) => `- ${d}`).join("\n") || "(no integrations configured yet)",
+  );
+  if (opts.source === "voice") {
+    return `${base}\n\n${VOICE_ADDENDUM}`;
+  }
+  return base;
+}
+
 interface HandleOpts {
   conversationId: string;
   content: string;
@@ -466,10 +482,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n");
 
-  const systemPrompt = INTERACTION_SYSTEM.replace(
-    "{{INTEGRATIONS}}",
-    describeIntegrations().map((d) => `- ${d}`).join("\n") || "(no integrations configured yet)",
-  );
+  const systemPrompt = buildSystemPrompt({ source: opts.source });
 
   const prompt = historyBlock
     ? `Prior turns:\n${historyBlock}\n\nCurrent message:\n${opts.content}`
