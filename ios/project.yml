@@ -13,11 +13,18 @@ settings:
     CURRENT_PROJECT_VERSION: "7"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     SWIFT_STRICT_CONCURRENCY: targeted
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: "4.5.0"
+
 targets:
   Boop:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
+    dependencies:
+      - package: Lottie
     sources:
       - path: Boop
         excludes:
