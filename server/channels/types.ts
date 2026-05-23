@@ -52,7 +52,8 @@ export interface ParsedInbound {
   /**
    * Client-generated UUID per voice utterance. Tags outbound
    * tts_chunk events so the iOS client can drop stale audio when
-   * the user fires another turn quickly.
+   * the user fires another turn quickly. Only meaningful when
+   * source === "voice".
    */
   voiceTurnId?: string;
 }

@@ -233,8 +233,19 @@ interface HandleOpts {
    * will use it instead of generating its own.
    */
   precomputedTurnId?: string;
-  source?: "voice";       // NEW — triggers voice-mode system prompt addendum + tts_* SSE pipeline
-  voiceTurnId?: string;   // NEW — client-generated UUID per voice utterance for tts_chunk tagging
+  /**
+   * "voice" when the inbound came from iOS voice mode. Triggers the
+   * voice-mode addendum on the agent system prompt + the tts_* SSE
+   * pipeline on the outbound. Undefined for text channels.
+   */
+  source?: "voice";
+  /**
+   * Client-generated UUID per voice utterance. Tags outbound
+   * tts_chunk events so the iOS client can drop stale audio when
+   * the user fires another turn quickly. Only meaningful when
+   * source === "voice".
+   */
+  voiceTurnId?: string;
 }
 
 function randomId(prefix: string): string {
