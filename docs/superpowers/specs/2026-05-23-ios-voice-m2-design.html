@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2 — Voice — Boop iOS Design</title>
+  <meta name="description" content="Design spec for M2 (Voice) of the Boop iOS native client.">
+  <style>
+    :root {
+      --bg: #fafaf9;
+      --bg-elev: #fff;
+      --surface: #f4f4f2;
+      --border: #e5e5e0;
+      --border-strong: #d4d4ce;
+      --text: #1c1c1a;
+      --text-soft: #4a4a46;
+      --text-dim: #6b6b65;
+      --accent: #0a84ff;
+      --accent-soft: rgba(10,132,255,.1);
+      --good: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --info: #6366f1;
+      --code-bg: #0f1419;
+      --code-text: #e6e1cf;
+      --kw: #ff9d45;
+      --str: #b8cc52;
+      --num: #f29718;
+      --com: #5c6773;
+      --pun: #cbccc6;
+      --type: #59c2ff;
+      --func: #ffb454;
+      --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.04);
+    }
+    html[data-theme="dark"] {
+      --bg: #0f0f0e;
+      --bg-elev: #18181a;
+      --surface: #1c1c1e;
+      --border: #2a2a2c;
+      --border-strong: #3a3a3c;
+      --text: #f0efea;
+      --text-soft: #c8c7c1;
+      --text-dim: #8e8e93;
+      --accent: #5e9eff;
+      --accent-soft: rgba(94,158,255,.14);
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --info: #a5b4fc;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+    }
+
+    * { box-sizing: border-box }
+    html { scroll-behavior: smooth; scroll-padding-top: 80px }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Header bar */
+    header.bar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--bg-elev);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+      padding: 14px 24px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    header.bar h1 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+    }
+    header.bar .meta {
+      color: var(--text-dim);
+      font-size: 13px;
+      flex: 1;
+    }
+    header.bar .controls { display: flex; gap: 8px }
+    button.btn {
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      color: var(--text-soft);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    button.btn:hover { background: var(--surface); color: var(--text) }
+
+    /* Layout */
+    .shell {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      max-width: 1200px;
+      margin: 0 auto;
+      gap: 32px;
+      padding: 24px;
+    }
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; padding: 16px }
+      aside.toc { position: static; max-height: none }
+    }
+
+    /* TOC */
+    aside.toc {
+      position: sticky;
+      top: 80px;
+      align-self: start;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+      padding: 8px;
+      font-size: 13px;
+    }
+    aside.toc h2 {
+      font-size: 11px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin: 8px 8px 12px;
+      font-weight: 600;
+    }
+    aside.toc ol {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      counter-reset: toc;
+    }
+    aside.toc li {
+      counter-increment: toc;
+    }
+    aside.toc a {
+      display: block;
+      padding: 6px 10px 6px 32px;
+      color: var(--text-soft);
+      text-decoration: none;
+      border-radius: 6px;
+      position: relative;
+      line-height: 1.4;
+    }
+    aside.toc a:before {
+      content: counter(toc);
+      position: absolute;
+      left: 10px;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      top: 8px;
+    }
+    aside.toc a:hover { background: var(--surface); color: var(--text) }
+    aside.toc a.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* Main */
+    main { max-width: 820px }
+
+    h1.doctitle {
+      font-size: 30px;
+      letter-spacing: -.02em;
+      margin: 8px 0 4px;
+      font-weight: 700;
+    }
+    .subtitle { color: var(--text-dim); font-size: 15px; margin: 0 0 8px }
+    .doc-meta {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin: 12px 0 32px;
+    }
+    .chip {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text-soft);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .chip.ok { color: var(--good); border-color: var(--good); background: transparent }
+    .chip.warn { color: var(--warn); border-color: var(--warn); background: transparent }
+    .chip.info { color: var(--info); border-color: var(--info); background: transparent }
+
+    section.doc-section {
+      margin: 0 0 48px;
+      scroll-margin-top: 72px;
+    }
+    section.doc-section > h2 {
+      font-size: 22px;
+      letter-spacing: -.015em;
+      font-weight: 600;
+      margin: 0 0 4px;
+      display: flex; align-items: baseline; gap: 12px;
+    }
+    section.doc-section > h2 .num {
+      font-size: 13px;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+    section.doc-section > h2 .anchor {
+      color: var(--text-dim);
+      text-decoration: none;
+      opacity: 0;
+      transition: opacity .15s ease;
+      font-weight: 400;
+      font-size: 16px;
+    }
+    section.doc-section > h2:hover .anchor { opacity: 1 }
+    section.doc-section > .lede {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin: 0 0 20px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 28px 0 8px;
+      letter-spacing: -.01em;
+    }
+    h4 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 20px 0 6px;
+      letter-spacing: .02em;
+      color: var(--text-soft);
+      text-transform: uppercase;
+    }
+    p { margin: 0 0 12px }
+    p + p { margin-top: 12px }
+
+    /* Code */
+    code.inline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .88em;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--text);
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      margin: 12px 0;
+    }
+    pre code { font-family: inherit }
+    .tok-kw { color: var(--kw); font-weight: 500 }
+    .tok-str { color: var(--str) }
+    .tok-num { color: var(--num) }
+    .tok-com { color: var(--com); font-style: italic }
+    .tok-pun { color: var(--pun) }
+    .tok-type { color: var(--type) }
+    .tok-func { color: var(--func) }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13.5px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      color: var(--text-dim);
+      font-weight: 500;
+      font-size: 12px;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      background: var(--surface);
+    }
+    tr:last-child td { border-bottom: none }
+
+    /* Callouts */
+    .callout {
+      padding: 12px 14px;
+      border-left: 3px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 0 6px 6px 0;
+      margin: 14px 0;
+      font-size: 14px;
+    }
+    .callout.warn { border-color: var(--warn); background: rgba(217,119,6,.07) }
+    .callout.info { border-color: var(--info); background: rgba(99,102,241,.07) }
+    .callout .head {
+      font-size: 11px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    /* Details */
+    details {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0;
+      margin: 12px 0;
+      background: var(--bg-elev);
+      overflow: hidden;
+    }
+    details > summary {
+      padding: 12px 14px;
+      cursor: pointer;
+      font-weight: 500;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    details > summary::-webkit-details-marker { display: none }
+    details > summary:before {
+      content: "›";
+      transition: transform .15s ease;
+      color: var(--text-dim);
+      display: inline-block;
+      width: 12px;
+      font-size: 16px;
+    }
+    details[open] > summary:before { transform: rotate(90deg) }
+    details > *:not(summary) { padding: 0 14px }
+    details > *:not(summary):last-child { padding-bottom: 14px }
+    details[open] > summary { border-bottom: 1px solid var(--border) }
+
+    /* State machine list */
+    ul.transitions {
+      list-style: none;
+      padding: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12.5px;
+      line-height: 1.9;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+    }
+    ul.transitions li { padding: 2px 0 }
+    .state {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      font-weight: 500;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .state.listening { background: rgba(10,132,255,.18); color: var(--accent) }
+    .state.thinking { background: rgba(99,102,241,.18); color: var(--info) }
+    .state.speaking { background: rgba(22,163,74,.18); color: var(--good) }
+    .state.paused { background: rgba(107,107,101,.18); color: var(--text-dim) }
+    .state.error { background: rgba(220,38,38,.18); color: var(--bad) }
+
+    /* Event vocabulary */
+    .evt {
+      display: inline-block;
+      padding: 0 8px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      font-family: ui-monospace, monospace;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-soft);
+    }
+    .evt.new { color: var(--good); border-color: rgba(22,163,74,.4) }
+    .evt.ext { color: var(--warn); border-color: rgba(217,119,6,.4) }
+
+    /* Links */
+    a { color: var(--accent); text-decoration: none }
+    a:hover { text-decoration: underline }
+
+    /* Footer */
+    footer.foot {
+      max-width: 820px;
+      padding: 32px 0 64px;
+      color: var(--text-dim);
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      margin-top: 48px;
+    }
+
+    /* Section icons in TOC */
+    .toc-icon {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-right: 6px;
+      vertical-align: middle;
+      opacity: .7;
+    }
+  </style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>M2 — Voice</h1>
+  <span class="meta">Boop iOS · spec · 2026-05-23 · <code class="inline" style="font-size:11px">feat/ios-channel</code></span>
+  <div class="controls">
+    <button class="btn" id="toggleAll">Expand all</button>
+    <button class="btn" id="themeToggle">Theme</button>
+  </div>
+</header>
+
+<div class="shell">
+
+<aside class="toc">
+  <h2>Sections</h2>
+  <ol id="tocList">
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#premises">Locked-in premises</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#ux-states">UX &amp; state machine</a></li>
+    <li><a href="#audio-vad">Audio capture &amp; VAD</a></li>
+    <li><a href="#tts-pipeline">TTS pipeline</a></li>
+    <li><a href="#server-changes">Server changes</a></li>
+    <li><a href="#perms-errors">Permissions &amp; error handling</a></li>
+    <li><a href="#visual">Visual treatment</a></li>
+    <li><a href="#test-plan">Test plan</a></li>
+    <li><a href="#dod">Definition of done</a></li>
+    <li><a href="#scope">Scope &amp; non-goals</a></li>
+    <li><a href="#open">Open questions</a></li>
+  </ol>
+</aside>
+
+<main>
+
+  <h1 class="doctitle">M2 — Voice</h1>
+  <p class="subtitle">Dedicated voice-mode screen for the Boop iOS native client. Continuous-loop hands-free conversation with streaming TTS.</p>
+  <div class="doc-meta">
+    <span class="chip">v1 · 2026-05-23</span>
+    <span class="chip info">milestone M2</span>
+    <span class="chip ok">brainstorm approved</span>
+    <span class="chip warn">implementation plan pending</span>
+    <span class="chip">3 weekends</span>
+  </div>
+
+  <section class="doc-section" id="overview">
+    <h2><span class="num">1</span> Overview <a href="#overview" class="anchor">#</a></h2>
+    <p class="lede">What M2 ships and why.</p>
+
+    <p>M2 adds a dedicated voice-mode screen to the Boop iOS app. The user taps the mic button in the existing dock, a full-screen sheet opens, and they have a hands-free conversation with boop — on-device speech-to-text, streamed assistant reply, streamed text-to-speech back through AirPods. Each turn lands in the currently-active thread as a normal message.</p>
+
+    <p>The milestone is intentionally <strong>not</strong> a chat-composer mic button. The earlier brainstorm picked the dedicated-screen path because hands-free with AirPods is the use case driving the feature, and the orb / state-machine UX is qualitatively different from "type by voice."</p>
+
+    <h3>What the user can do after M2 ships</h3>
+    <ul>
+      <li>Tap the dock mic on any active thread → speak naturally → hear the reply.</li>
+      <li>Carry a back-and-forth conversation without touching the phone (continuous loop).</li>
+      <li>Tap the orb mid-reply to skip ahead.</li>
+      <li>Mute mid-session in a noisy environment without exiting.</li>
+      <li>Fall back to text by tapping the keyboard control — the latest partial transcript lands in the composer.</li>
+      <li>Replies are persisted to the active thread; closing voice mode leaves a normal chat scrollback behind.</li>
+    </ul>
+
+    <h3>What M2 is <em>not</em></h3>
+    <ul>
+      <li>Not a chat-composer mic button (decided against in the brainstorm).</li>
+      <li>Not interruptible mid-TTS (no barge-in — that's the M2.5 candidate).</li>
+      <li>Not a separate "Voice" thread (turns continue the active thread).</li>
+      <li>Not backgrounded / always-listening (battery + entitlements; explicit non-goal).</li>
+      <li>Not Siri / Shortcuts / Action Button entry (that's M4).</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="premises">
+    <h2><span class="num">2</span> Locked-in premises <a href="#premises" class="anchor">#</a></h2>
+    <p class="lede">The decisions taken in the brainstorm, restated explicitly so the implementation plan can reference them.</p>
+
+    <table>
+      <thead><tr><th style="width:30%">Decision</th><th>Choice</th></tr></thead>
+      <tbody>
+        <tr><td>UX shape</td><td>Dedicated voice-mode screen (not a chat-composer mic button).</td></tr>
+        <tr><td>Turn model</td><td>Continuous loop. <strong>No</strong> barge-in. Mic re-arms after <span class="evt">tts_done</span>.</td></tr>
+        <tr><td>TTS engines</td><td>ElevenLabs streaming when <code class="inline">ELEVENLABS_API_KEY</code> set on server; <code class="inline">AVSpeechSynthesizer</code> fallback otherwise.</td></tr>
+        <tr><td>Thread model</td><td>Voice turns append to the currently-active thread — full context continuity.</td></tr>
+        <tr><td>TTS streaming pipeline</td><td>Stream-first. Server-side sentence-buffer → ElevenLabs WS → SSE <span class="evt new">tts_chunk</span> events → iOS audio queue.</td></tr>
+        <tr><td>Mic re-arm after skip</td><td>Strict — drain audio queue before listening.</td></tr>
+        <tr><td>Voice-source hint</td><td>Server passes <code class="inline">source: "ios-voice"</code> into <code class="inline">runTurn</code>; system prompt gets a verbosity addendum.</td></tr>
+        <tr><td>Persistence</td><td>Voice turns persist via the existing <code class="inline">messages.send</code> mutation. No new Convex schema.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="doc-section" id="architecture">
+    <h2><span class="num">3</span> Architecture <a href="#architecture" class="anchor">#</a></h2>
+    <p class="lede">Components, data flow, and what changes vs. what's reused from M1.</p>
+
+    <h3>Inbound (user speaks)</h3>
+    <pre><code><span class="tok-com">[iPhone]</span> mic stream <span class="tok-pun">→</span> SFSpeechRecognizer <span class="tok-com">// on-device, iOS 17+</span>
+   <span class="tok-pun">↓</span> partial transcripts <span class="tok-com">// rendered on orb</span>
+<span class="tok-com">[iPhone]</span> VAD: silence <span class="tok-pun">≥</span> 1.4s <span class="tok-pun">→</span> finalize utterance
+   <span class="tok-pun">↓</span>
+<span class="tok-com">[iPhone]</span> POST <span class="tok-str">/channels/ios/inbound</span> <span class="tok-com">// existing M1 endpoint</span>
+           body: <span class="tok-pun">{</span> text, source: <span class="tok-str">"voice"</span>, conversationId, voiceTurnId <span class="tok-pun">}</span>
+   <span class="tok-pun">↓</span>
+<span class="tok-com">[server]</span> runTurn(inbound)  <span class="tok-com">// unchanged shape</span>
+   <span class="tok-pun">↓</span>
+<span class="tok-com">[server]</span> agent system prompt <span class="tok-pun">+=</span> voice-mode addendum</code></pre>
+
+    <h3>Outbound (assistant responds)</h3>
+    <pre><code><span class="tok-com">[server]</span> SDK streaming callback <span class="tok-pun">→</span> broadcast(<span class="tok-str">"assistant_delta"</span>)
+   <span class="tok-pun">↓</span> NEW: voice-mode sidecar subscribes
+<span class="tok-com">[server]</span> SentenceBuffer: accumulate tokens, emit on <span class="tok-str">.!?:</span>\n boundaries
+   <span class="tok-pun">↓</span> each sentence
+<span class="tok-com">[server]</span> TTS sidecar: ElevenLabs WS (Flash v2.5)  <span class="tok-pun">|</span>  fallback marker
+   <span class="tok-pun">↓</span> audio chunks (mp3_44100_128)
+<span class="tok-com">[server]</span> SSE event: tts_chunk <span class="tok-pun">{</span> conversationId, voiceTurnId, seq, audio, mime <span class="tok-pun">}</span>
+   <span class="tok-pun">↓</span> over existing /channels/ios/stream
+<span class="tok-com">[iPhone]</span> AudioQueue: decode <span class="tok-pun">+</span> enqueue <span class="tok-pun">+</span> play via AVAudioEngine
+   <span class="tok-pun">↓</span> tts_done event
+<span class="tok-com">[iPhone]</span> orb <span class="tok-pun">→</span> idle, re-arm mic (continuous loop)</code></pre>
+
+    <h3>What changes vs. what's reused</h3>
+    <table>
+      <thead><tr><th style="width:42%">Layer</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>iOS — Voice mode sheet</td><td><span class="chip info">new</span> full-screen modal, orb, state machine</td></tr>
+        <tr><td>iOS — <code class="inline">VoiceSession</code> actor</td><td><span class="chip info">new</span> SFSpeechRecognizer + VAD + audio session ownership</td></tr>
+        <tr><td>iOS — <code class="inline">AudioQueue</code></td><td><span class="chip info">new</span> AVAudioEngine + chunk reassembly</td></tr>
+        <tr><td>iOS — <code class="inline">LottieView</code></td><td><span class="chip info">new</span> wrapper around lottie-ios</td></tr>
+        <tr><td>iOS — <code class="inline">SSEClient</code></td><td><span class="chip warn">extend</span> handle <span class="evt">tts_chunk</span>/<span class="evt">tts_done</span>/<span class="evt">tts_error</span>/<span class="evt">tts_use_local</span></td></tr>
+        <tr><td>iOS — Dock <code class="inline">voiceModeButton</code></td><td><span class="chip warn">wire</span> currently inert; opens the sheet</td></tr>
+        <tr><td>Server — <code class="inline">POST /channels/ios/inbound</code></td><td><span class="chip warn">extend</span> accept <code class="inline">source</code> + <code class="inline">voiceTurnId</code></td></tr>
+        <tr><td>Server — agent system prompt</td><td><span class="chip warn">extend</span> voice-mode addendum, conditional on source</td></tr>
+        <tr><td>Server — <code class="inline">SentenceBuffer</code></td><td><span class="chip info">new</span> token stream → sentence chunks</td></tr>
+        <tr><td>Server — TTS sidecar + ElevenLabs WS adapter</td><td><span class="chip info">new</span></td></tr>
+        <tr><td>Server — <code class="inline">GET /channels/ios/stream</code></td><td><span class="chip warn">extend</span> emit new event types via existing <code class="inline">broadcast()</code></td></tr>
+        <tr><td>Convex schema</td><td><span class="chip ok">unchanged</span></td></tr>
+        <tr><td>runTurn, dispatcher, memory, Sendblue, Telegram</td><td><span class="chip ok">unchanged</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="doc-section" id="ux-states">
+    <h2><span class="num">4</span> UX &amp; state machine <a href="#ux-states" class="anchor">#</a></h2>
+    <p class="lede">The four states, the controls, and the transitions between them.</p>
+
+    <h3>Visual states</h3>
+    <table>
+      <thead><tr><th style="width:18%">State</th><th>Orb</th><th>Subtitle</th><th>Mic</th></tr></thead>
+      <tbody>
+        <tr><td><span class="state listening">listening</span></td><td>Calm pulse (Lottie). Tinted by active thread.</td><td>Live partial transcript fades in.</td><td>Hot. VAD watching.</td></tr>
+        <tr><td><span class="state thinking">thinking</span></td><td>Slower, deliberate motion.</td><td>Frozen transcript of last user utterance.</td><td>Cold.</td></tr>
+        <tr><td><span class="state speaking">speaking</span></td><td>Amplitude-modulated by audio level.</td><td>Assistant text streams in (1–2 lines).</td><td>Cold. Tap orb to skip.</td></tr>
+        <tr><td><span class="state paused">paused</span></td><td>Static + muted glyph.</td><td>"Tap to resume."</td><td>Cold.</td></tr>
+        <tr><td><span class="state error">error</span></td><td>Dim, static.</td><td>Error message + retry.</td><td>Cold.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Controls</h3>
+    <ul>
+      <li><strong>🔇 Mute</strong> — pause without exiting. Useful in noisy environments / interruptions. Tap again to resume.</li>
+      <li><strong>✕ Exit</strong> — close the sheet; end voice session; persist all completed turns; cut in-flight audio.</li>
+      <li><strong>⌨ Keyboard</strong> — exit to the dock with the latest partial transcript pre-loaded in the composer. Rescue path when voice is failing.</li>
+    </ul>
+
+    <h3>Transitions</h3>
+    <ul class="transitions">
+      <li><span class="state">entry</span> → check mic + speech permissions → <span class="state listening">listening</span> (or → permission-denied screen)</li>
+      <li><span class="state listening">listening</span> → VAD silence ≥ 1.4s + transcript non-empty → <span class="state thinking">thinking</span></li>
+      <li><span class="state listening">listening</span> → tap 🔇 → <span class="state paused">paused</span></li>
+      <li><span class="state thinking">thinking</span> → first <span class="evt new">tts_chunk</span> → <span class="state speaking">speaking</span></li>
+      <li><span class="state thinking">thinking</span> → <span class="evt new">tts_error</span> → <span class="state error">error</span></li>
+      <li><span class="state speaking">speaking</span> → <span class="evt new">tts_done</span> → <span class="state listening">listening</span></li>
+      <li><span class="state speaking">speaking</span> → tap orb → drain audio (~150ms) → <span class="state listening">listening</span></li>
+      <li><span class="state paused">paused</span> → tap 🎙 → <span class="state listening">listening</span></li>
+      <li>any → tap ✕ → close sheet; mic off; audio queue drained; voice session ended</li>
+      <li>any → tap ⌨ → exit to dock; latest partial transcript in composer</li>
+    </ul>
+
+    <div class="callout">
+      <div class="head">Why continuous-loop without barge-in</div>
+      Barge-in (option 3 in the brainstorm) requires echo cancellation against a hot mic during TTS playback. AVAudioSession <code class="inline">.voiceChat</code> mode helps but doesn't fully solve it. We took the simpler shape now and reserved barge-in for M2.5 once we have dogfood data on what the conversation rhythm actually feels like.
+    </div>
+  </section>
+
+  <section class="doc-section" id="audio-vad">
+    <h2><span class="num">5</span> Audio capture &amp; VAD <a href="#audio-vad" class="anchor">#</a></h2>
+    <p class="lede">Mic setup, transcription, and how we decide a user turn is over.</p>
+
+    <h3>Audio session</h3>
+    <p>A new <code class="inline">VoiceSession</code> actor owns the audio session for the lifetime of the sheet.</p>
+    <pre><code><span class="tok-com">// iOS — VoiceSession.swift (new)</span>
+<span class="tok-kw">let</span> session <span class="tok-pun">=</span> AVAudioSession.sharedInstance()
+<span class="tok-kw">try</span> session.setCategory(.playAndRecord,
+    mode: .voiceChat,
+    options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+<span class="tok-kw">try</span> session.setActive(<span class="tok-kw">true</span>)
+
+<span class="tok-kw">let</span> engine <span class="tok-pun">=</span> AVAudioEngine()
+<span class="tok-kw">let</span> tap <span class="tok-pun">=</span> engine.inputNode.installTap(onBus: <span class="tok-num">0</span>,
+    bufferSize: <span class="tok-num">1024</span>,
+    format: <span class="tok-kw">nil</span>) { buffer, _ <span class="tok-pun">in</span>
+    speechRequest.append(buffer)
+    vad.observe(buffer)
+}</code></pre>
+    <p>The <code class="inline">.voiceChat</code> mode gives us Apple's built-in echo + noise suppression for free. That matters because even without barge-in we want clean capture as the user starts a turn while speaker-audio echoes are decaying.</p>
+
+    <h3>Transcription</h3>
+    <p><code class="inline">SFSpeechRecognizer(locale: .current)</code> with <code class="inline">requiresOnDeviceRecognition = true</code> for iOS 17+. Free, private, no quota.</p>
+    <ul>
+      <li><strong>Partials</strong> — used purely for the on-orb live transcript display. Throttled to ~5 fps so SwiftUI doesn't redraw the whole orb constantly.</li>
+      <li><strong>Finals</strong> — committed on segment boundaries, but we <em>don't</em> send on <code class="inline">result.isFinal</code>. That fires when SFSpeech <em>thinks</em> the user is done, often prematurely. The VAD layer below decides.</li>
+    </ul>
+
+    <h3>VAD thresholds</h3>
+    <table>
+      <thead><tr><th>Threshold</th><th>Default</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">silenceDuration</code></td><td>1.4 s</td><td>continuous below-noise-floor input → commit utterance</td></tr>
+        <tr><td><code class="inline">minUtteranceMs</code></td><td>350 ms</td><td>reject coughs / "uh" / accidental button taps</td></tr>
+        <tr><td><code class="inline">maxUtteranceMs</code></td><td>30 s</td><td>force-commit even without silence (safety net)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Implementation: per <code class="inline">installTap</code> buffer we compute RMS power. If <code class="inline">currentRMS &lt; noiseFloor + 6 dB</code> for <code class="inline">silenceDuration</code>, commit. Noise floor is a 2-second rolling average measured during the first <span class="state">entry</span> → <span class="state listening">listening</span> transition — adapts to a quiet bedroom vs. a busy café.</p>
+
+    <h3>What gets sent</h3>
+    <pre><code>POST /channels/ios/inbound
+Authorization: Bearer &lt;deviceToken&gt;
+
+<span class="tok-pun">{</span>
+  <span class="tok-str">"text"</span>: <span class="tok-str">"summarise my email from finance"</span>,
+  <span class="tok-str">"conversationId"</span>: <span class="tok-str">"ios:&lt;deviceId&gt;:&lt;threadId&gt;"</span>,
+  <span class="tok-str">"source"</span>: <span class="tok-str">"voice"</span>,
+  <span class="tok-str">"voiceTurnId"</span>: <span class="tok-str">"&lt;UUID&gt;"</span>
+<span class="tok-pun">}</span></code></pre>
+    <p>The <code class="inline">voiceTurnId</code> lets the server's TTS sidecar tag outbound <span class="evt new">tts_chunk</span> events so the client knows which utterance the audio corresponds to. Matters if the user rapidly fires two turns.</p>
+  </section>
+
+  <section class="doc-section" id="tts-pipeline">
+    <h2><span class="num">6</span> TTS pipeline <a href="#tts-pipeline" class="anchor">#</a></h2>
+    <p class="lede">From assistant tokens to audio in your AirPods, including the latency budget.</p>
+
+    <h3>Server-side new components</h3>
+    <ul>
+      <li><strong><code class="inline">server/voice/sentence-buffer.ts</code></strong> — pure function <code class="inline">createSentenceBuffer({ onSentence })</code>. Pushes deltas in, fires <code class="inline">onSentence(text)</code> callbacks. Splits on <code class="inline">/(?&lt;=[.!?:])\s/</code> with an allow-list exclude for <code class="inline">Mr|Mrs|Ms|Dr|St|U\.S|e\.g|i\.e|\d+\.\d+</code>. Unit-testable in isolation; zero external deps.</li>
+      <li><strong><code class="inline">server/voice/tts-elevenlabs.ts</code></strong> — thin WS adapter. <code class="inline">createElevenLabsStream({ voiceId, modelId, apiKey })</code> returns <code class="inline">{ send(text), end(), onChunk, onError, onDone }</code>. ~100 lines. No shared state between turns.</li>
+      <li><strong><code class="inline">server/voice/tts-sidecar.ts</code></strong> — orchestrator. Wires <code class="inline">SentenceBuffer</code> into the ElevenLabs adapter (or the local-fallback path), subscribes to <code class="inline">broadcast()</code> filtered by <code class="inline">conversationId + voiceTurnId</code>, emits <span class="evt new">tts_chunk</span> / <span class="evt new">tts_done</span> / <span class="evt new">tts_error</span> / <span class="evt new">tts_use_local</span> via <code class="inline">broadcast()</code>. Owns per-turn lifecycle.</li>
+      <li><strong><code class="inline">server/voice/markdown-strip.ts</code></strong> — used <em>only</em> on the fallback path. Strips <code class="inline">**bold**</code>, backticks, <code class="inline">#</code> headings, bullets, fenced code blocks. The TTS-voice path doesn't strip because the agent verbosity hint already told the agent not to emit markdown.</li>
+    </ul>
+
+    <h3>iOS new components</h3>
+    <ul>
+      <li><strong><code class="inline">ios/Boop/Voice/AudioQueue.swift</code></strong> — actor wrapping <code class="inline">AVAudioEngine</code> + <code class="inline">AVAudioPlayerNode</code>. Receives <span class="evt new">tts_chunk</span> payloads, decodes <code class="inline">audio/mpeg</code> (ElevenLabs Flash v2.5 default), schedules into the player node. Transitions UI from <span class="state thinking">thinking</span> to <span class="state speaking">speaking</span> on first scheduled buffer <em>playing</em> (not first chunk received). On tap-orb-to-skip: stops the player, flushes queued buffers, resolves a <code class="inline">drainPromise</code> the state machine awaits before going <span class="state listening">listening</span>.</li>
+      <li><strong><code class="inline">ios/Boop/Networking/SSEClient.swift</code></strong> — adds the four new event types to the event-type enum and dispatch table. No new transport, no new connection.</li>
+    </ul>
+
+    <h3>Latency budget</h3>
+    <table>
+      <thead><tr><th>Stage</th><th style="width:14%">Budget</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>VAD commit → POST <code class="inline">/inbound</code></td><td>50 ms</td><td>cellular RTT + TLS</td></tr>
+        <tr><td>POST → first agent token</td><td>≤ 800 ms</td><td>already measured on M1; inherited</td></tr>
+        <tr><td>First token → first sentence boundary</td><td>~150 ms</td><td>Claude ~50 tps; short sentence ≈ 8 tokens</td></tr>
+        <tr><td>Sentence → ElevenLabs first audio chunk</td><td>75–200 ms</td><td>Flash v2.5; measured on integration</td></tr>
+        <tr><td>Chunk → iOS speaker out</td><td>~40 ms</td><td>AudioQueue + AVAudioEngine</td></tr>
+        <tr style="background:var(--surface)"><td><strong>Total VAD-commit → first audio</strong></td><td><strong>~1.1–1.3 s</strong></td><td>below conversational ceiling (~1.5s)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>SSE event vocabulary</h3>
+    <table>
+      <thead><tr><th style="width:32%">Event</th><th>Payload</th></tr></thead>
+      <tbody>
+        <tr><td><span class="evt">assistant_delta</span></td><td><code class="inline">{ conversationId, delta, seq }</code> <em>— existing M1</em></td></tr>
+        <tr><td><span class="evt">assistant_message</span></td><td><code class="inline">{ conversationId, message }</code> <em>— existing M1</em></td></tr>
+        <tr><td><span class="evt new">tts_chunk</span></td><td><code class="inline">{ conversationId, voiceTurnId, seq, audio: base64, mime }</code></td></tr>
+        <tr><td><span class="evt new">tts_done</span></td><td><code class="inline">{ conversationId, voiceTurnId }</code></td></tr>
+        <tr><td><span class="evt new">tts_error</span></td><td><code class="inline">{ conversationId, voiceTurnId, reason }</code></td></tr>
+        <tr><td><span class="evt new">tts_use_local</span></td><td><code class="inline">{ conversationId, voiceTurnId, text }</code> — server can't TTS, iOS uses <code class="inline">AVSpeechSynthesizer</code> on this text</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Audio format &amp; voice</h3>
+    <p>ElevenLabs Flash v2.5 streams <code class="inline">mp3_44100_128</code> by default — we accept as-is. <code class="inline">AVAudioEngine</code> decodes mp3 natively, no opus dep. ~16 KB/s = trivial over cellular.</p>
+    <p>Default voice ID: <code class="inline">9BWtsMINqrJLrRacOk9x</code> (ElevenLabs "Aria"). Overridable via <code class="inline">ELEVENLABS_VOICE_ID</code> env. Per-thread voice selection is out of scope for M2.</p>
+
+    <h3>Backpressure</h3>
+    <p>If <code class="inline">AudioQueue</code> falls behind (queue depth &gt; 8 chunks), the sidecar pauses reading from the ElevenLabs WS (sets WS to flow-controlled). ElevenLabs holds the connection open; resumes when iOS drains. Handles bad-cellular scenarios without dropping audio.</p>
+
+    <div class="callout warn">
+      <div class="head">Latency-shaping note</div>
+      With sentence-boundary chunking, the <em>first sentence</em> sets perceived latency. The agent verbosity addendum is critical: <em>"Sure, here's a summary:"</em> hits ~1.1s. A long preamble like <em>"I'd be happy to help with that. Let me go through each one carefully:"</em> hits the same first-audio at the comma, but informative audio is delayed 4–5s.
+    </div>
+  </section>
+
+  <section class="doc-section" id="server-changes">
+    <h2><span class="num">7</span> Server changes <a href="#server-changes" class="anchor">#</a></h2>
+    <p class="lede">File-by-file deltas. Concrete enough to drive the implementation plan; abstract enough to survive code drift.</p>
+
+    <details open>
+      <summary><code class="inline">server/ios/router.ts</code> — extend, don't rewrite</summary>
+      <ul>
+        <li><code class="inline">POST /inbound</code> — accept optional <code class="inline">source</code> and <code class="inline">voiceTurnId</code> in the body; pass both into <code class="inline">runTurn()</code> via a new <code class="inline">inbound.source</code> field. Auth, pairing, rate limiting unchanged.</li>
+        <li><code class="inline">GET /stream</code> — no transport change. The new <code class="inline">tts_*</code> event types pass through unchanged because they go via the existing <code class="inline">broadcast()</code> → <code class="inline">subscribe()</code> filter.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><code class="inline">server/channels/index.ts</code> — extend <code class="inline">Inbound</code> type</summary>
+      <p>Add <code class="inline">source: "sms" | "tg" | "ios" | "ios-voice"</code>. Default to <code class="inline">"ios-voice"</code> when <code class="inline">source === "voice"</code> and channel is iOS — this flows into the system-prompt switch.</p>
+    </details>
+
+    <details>
+      <summary><code class="inline">server/interaction-agent.ts</code> — voice-mode addendum</summary>
+      <p>One change: where the system prompt is materialized, append the addendum when <code class="inline">inbound.source === "ios-voice"</code>:</p>
+      <div class="callout">
+        You are speaking to the user out loud through text-to-speech. Reply in conversational prose, not markdown. No bullet lists, no code blocks, no numbered sections, no asterisks. Lead with the answer in one sentence (≤ 12 words), then offer at most two more sentences of detail. If the user asks for a long list, summarise it in prose ("three things — first, …, second, …, third, …"). When you must read out code, URLs, or IDs, say "I'll send that as a text" and skip them aloud.
+      </div>
+      <p>This addendum is <strong>conditional</strong>, not the default — text messages stay verbose as today.</p>
+    </details>
+
+    <details>
+      <summary><code class="inline">server/voice/</code> — new folder, four files</summary>
+      <ul>
+        <li><code class="inline">sentence-buffer.ts</code> — sentence splitter, regex-based with abbreviation allow-list. Pure function.</li>
+        <li><code class="inline">tts-elevenlabs.ts</code> — ElevenLabs WS client. Single connection per turn. ~100 lines.</li>
+        <li><code class="inline">tts-sidecar.ts</code> — orchestrator. Per-turn lifecycle. Created on first <code class="inline">assistant_delta</code> after a voice-source <code class="inline">runTurn</code>; destroyed on <code class="inline">assistant_message</code>.</li>
+        <li><code class="inline">markdown-strip.ts</code> — fallback-path-only markdown cleaner.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><code class="inline">.env.example</code> — new vars</summary>
+      <pre><code><span class="tok-com"># Optional. If unset, voice mode falls back to AVSpeech on iOS.</span>
+ELEVENLABS_API_KEY<span class="tok-pun">=</span>
+<span class="tok-com"># Default voice — "Aria".</span>
+ELEVENLABS_VOICE_ID<span class="tok-pun">=</span>9BWtsMINqrJLrRacOk9x
+<span class="tok-com"># Pinned by default; override only for evals.</span>
+ELEVENLABS_MODEL_ID<span class="tok-pun">=</span>eleven_flash_v2_5</code></pre>
+    </details>
+
+    <h3>What doesn't change</h3>
+    <ul>
+      <li>Dispatcher, sub-agents, memory extraction, consolidation — untouched.</li>
+      <li>Convex schema — untouched. Voice turns persist via the existing <code class="inline">messages.send</code> mutation.</li>
+      <li>iMessage / Telegram paths — untouched. The verbosity hint is conditional on <code class="inline">source === "ios-voice"</code>.</li>
+      <li>M1's pairing flow, bearer tokens, rate limits — untouched.</li>
+    </ul>
+
+    <h3>Failure modes (extending M1's F1–F10)</h3>
+    <table>
+      <thead><tr><th style="width:8%">#</th><th>Failure</th><th>Handling</th></tr></thead>
+      <tbody>
+        <tr><td>F11</td><td>ElevenLabs WS fails to open</td><td>sidecar emits <span class="evt new">tts_use_local</span> immediately; iOS uses AVSpeech. Quality drop, no broken state.</td></tr>
+        <tr><td>F12</td><td>ElevenLabs WS drops mid-turn</td><td>sidecar emits <span class="evt new">tts_use_local</span> with the <em>remaining</em> text. Mid-stream fallback. Awkward but no silence.</td></tr>
+        <tr><td>F13</td><td>ElevenLabs 429 / quota exhausted</td><td>1-minute negative cache, then <span class="evt new">tts_use_local</span>. Next turn retries WS.</td></tr>
+        <tr><td>F14</td><td>SentenceBuffer never flushes (long un-punctuated reply)</td><td>1500ms safety timer force-flushes. Slightly worse prosody, never hangs.</td></tr>
+        <tr><td>F15</td><td>Voice turn submitted while text turn already running</td><td>Existing per-conversation <code class="inline">runTurn</code> lock handles it. iOS sees no <span class="evt new">tts_*</span> for the rejected turn, falls back after 5s <span class="state thinking">thinking</span> timeout.</td></tr>
+        <tr><td>F16</td><td>User force-quits mid-<span class="state speaking">speaking</span></td><td>SSE drops → server cleans up sidecar via <code class="inline">on('close')</code>; WS closed. ~10 KB audio wasted.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="doc-section" id="perms-errors">
+    <h2><span class="num">8</span> Permissions &amp; error handling <a href="#perms-errors" class="anchor">#</a></h2>
+    <p class="lede">First-launch flow, audio session edges, network edges, state-machine edges.</p>
+
+    <h3>Permissions</h3>
+    <p>Two distinct permissions, both required:</p>
+    <ul>
+      <li><code class="inline">NSMicrophoneUsageDescription</code> — <em>"Boop needs your mic to hear what you ask in voice mode."</em></li>
+      <li><code class="inline">NSSpeechRecognitionUsageDescription</code> — <em>"Boop transcribes your voice on-device to talk to the agent."</em></li>
+    </ul>
+    <p>First time the user taps the dock mic, a <strong>single permission card</strong> (not Apple's two back-to-back system prompts cold) explains both, then sequentially requests them. If either is denied, the card flips to a <code class="inline">Settings → Boop → Microphone</code> deep-link.</p>
+
+    <h3>Audio session edges</h3>
+    <table>
+      <thead><tr><th style="width:38%">Event</th><th>Handling</th></tr></thead>
+      <tbody>
+        <tr><td>Phone call arrives mid-<span class="state listening">listening</span></td><td><code class="inline">AVAudioSession.interruptionNotification</code> → enter <span class="state paused">paused</span>. On <code class="inline">.ended</code> + <code class="inline">shouldResume</code>, back to <span class="state listening">listening</span>.</td></tr>
+        <tr><td>AirPods unplugged mid-<span class="state speaking">speaking</span></td><td><code class="inline">routeChangeNotification</code> with <code class="inline">oldDeviceUnavailable</code> → fade audio over 300ms, enter <span class="state paused">paused</span> with "put AirPods back in".</td></tr>
+        <tr><td>AirPods plugged in mid-session</td><td>route change is silent; iOS routes audio to AirPods on next chunk. Brief pill: "Switched to AirPods".</td></tr>
+        <tr><td>Silent switch on</td><td><code class="inline">.playAndRecord</code> category bypasses silent; no special handling needed.</td></tr>
+        <tr><td>Backgrounded</td><td>Voice mode pauses on <code class="inline">scenePhase == .background</code>; resumes on <code class="inline">.active</code>. Current sentence finishes via UIKit audio-background mode; mic detaches.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Network edges</h3>
+    <table>
+      <thead><tr><th style="width:8%">#</th><th>Failure</th><th>Handling</th></tr></thead>
+      <tbody>
+        <tr><td>V1</td><td>SSE disconnects mid-<span class="state listening">listening</span></td><td>Reconnect with backoff. Listening is local; nothing depends on the server.</td></tr>
+        <tr><td>V2</td><td>SSE disconnects mid-<span class="state speaking">speaking</span></td><td>Drained chunks finish. On reconnect, replay with <code class="inline">?since=&lt;last_seq&gt;</code>. Gap &gt; 5 chunks → <span class="evt new">tts_error</span>.</td></tr>
+        <tr><td>V3</td><td>POST <code class="inline">/inbound</code> 5xx</td><td>Transition to <span class="state error">error</span> with "Couldn't reach boop — tap to retry". Tap reuses the held transcript.</td></tr>
+        <tr><td>V4</td><td>iOS sends utterance during server restart</td><td>503 → V3 path.</td></tr>
+        <tr><td>V5</td><td>SSE event arrives after <span class="evt new">tts_done</span> for stale <code class="inline">voiceTurnId</code></td><td>Dispatcher checks current turn ID; stale events dropped.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>State-machine edges</h3>
+    <ul>
+      <li><strong>Sheet swiped down mid-<span class="state speaking">speaking</span></strong> — same as ✕. Drain audio, end session, persist completed turns. Convex already has the assistant message via <code class="inline">assistant_message</code>.</li>
+      <li><strong>Rapid mute-toggle</strong> — debounce 200 ms.</li>
+      <li><strong>VAD never fires</strong> — <code class="inline">maxUtteranceMs</code> (30s) force-commits.</li>
+      <li><strong>VAD fires on noise</strong> — <code class="inline">minUtteranceMs</code> (350ms) drops bursts. Empty transcript after a commit → don't POST, return to <span class="state listening">listening</span> silently.</li>
+      <li><strong>Idle hint</strong> — after 6s of <span class="state listening">listening</span> with empty transcript, show a small "go ahead" hint.</li>
+    </ul>
+
+    <h3>Concurrency</h3>
+    <ul>
+      <li>Voice mode is per-app-instance — only one <code class="inline">VoiceSession</code> at a time, enforced by an iOS singleton.</li>
+      <li>Server-side, multiple <code class="inline">voiceTurnId</code>s from the same device are technically allowed; the continuous-loop UX serializes them in practice.</li>
+      <li>Multiple devices on the same boop instance — both can use voice mode simultaneously on different threads or even the same thread. Each device's sidecar streams to its own SSE.</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="visual">
+    <h2><span class="num">9</span> Visual treatment <a href="#visual" class="anchor">#</a></h2>
+    <p class="lede">Where the canonical design lives (pencil) and which Lottie animations drive the orb.</p>
+
+    <h3>Pencil deliverables</h3>
+    <p>New frames added to <code class="inline">ios_app_design.pen</code> (existing file at repo root, owned by the M1 design work):</p>
+    <table>
+      <thead><tr><th>Frame</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">M2/VoiceMode/Permission</code></td><td>First-tap card explaining mic + speech permissions, two buttons (Allow / Not now).</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/PermissionDenied</code></td><td>Settings-deep-link variant when user previously denied.</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/Listening</code></td><td>Full-screen orb, header (thread pip + name), live transcript, 3 bottom controls.</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/Thinking</code></td><td>Same layout, orb in thinking motion, transcript frozen.</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/Speaking</code></td><td>Same layout, orb amplitude-modulated, assistant text 1–2 lines.</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/Paused</code></td><td>Same layout, orb static + muted glyph.</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/Error</code></td><td>Same layout, orb dim, error subtitle + retry.</td></tr>
+        <tr><td><code class="inline">M2/VoiceMode/Entry</code></td><td>Dock mic button highlighted + one-time tooltip on first-ever tap.</td></tr>
+      </tbody>
+    </table>
+    <p>The orb is tinted by the active thread — Sky <code class="inline">#5e9eff</code>, Indigo <code class="inline">#5e5ce6</code>, Mint <code class="inline">#30d158</code>, etc. — pulling from <code class="inline">BoopColor.ThreadTint</code> already used by the dock.</p>
+
+    <h3>Lottie animation candidates</h3>
+    <p>Final picks happen during implementation. Candidates sourced from <a href="https://lottiefiles.com/free-animations/ai" target="_blank">lottiefiles.com/free-animations/ai</a> and adjacent collections.</p>
+
+    <h4>Listening (calm pulse)</h4>
+    <ul>
+      <li><a href="https://lottiefiles.com/free-animation/pulse-1vCzxDzHrN" target="_blank">Pulse by Ran Shani</a> — minimal concentric pulse, ideal default.</li>
+      <li><a href="https://lottiefiles.com/10837-abstract-orb" target="_blank">Abstract Orb by Nathan Covert</a> — gradient blob, slightly more "AI" vibe.</li>
+      <li>Browse: <a href="https://lottiefiles.com/free-animations/orb-animation" target="_blank">orb-animation</a>, <a href="https://lottiefiles.com/free-animations/pulsating" target="_blank">pulsating UI</a>.</li>
+    </ul>
+
+    <h4>Thinking</h4>
+    <ul>
+      <li><a href="https://lottiefiles.com/free-animation/simple-loading-ai-thinking-O283a21B9W" target="_blank">Simple loading &amp; AI thinking by Sander</a> — purpose-built for this exact UX.</li>
+      <li><a href="https://lottiefiles.com/free-animation/dots-loader-mLlIsQqTtU" target="_blank">Dots Loader by Joe Woodward</a> — minimal alternative.</li>
+    </ul>
+
+    <h4>Speaking</h4>
+    <ul>
+      <li><a href="https://lottiefiles.com/84628-voice-line-wave-animation" target="_blank">Voice line / wave by Istvan Robert Kiss</a> — waveform that can be amplitude-modulated.</li>
+      <li><a href="https://lottiefiles.com/collections/voice-CwKRzwdLC0" target="_blank">Tiom AI voice collection</a> — full set of speak/listen states.</li>
+      <li>Fallback: drive amplitude on the listening Lottie from the live audio level instead of using a separate animation.</li>
+    </ul>
+
+    <h3>Lottie implementation notes</h3>
+    <ul>
+      <li>Add <a href="https://github.com/airbnb/lottie-ios" target="_blank"><code class="inline">lottie-ios</code></a> via SPM (pin 4.5+).</li>
+      <li>New folder <code class="inline">ios/Boop/Resources/lottie/</code> with <code class="inline">listening.json</code>, <code class="inline">thinking.json</code>, <code class="inline">speaking.json</code>. Files added to the Xcode target via <code class="inline">project.yml</code>.</li>
+      <li>New SwiftUI wrapper <code class="inline">ios/Boop/Views/Components/LottieView.swift</code>.</li>
+      <li>Dock's <code class="inline">voiceModeButton</code> gets a small <code class="inline">LottieView("mic-pulse")</code> overlay when voice mode is active (signal from the chat surface).</li>
+      <li><strong>Reduce Motion</strong> — when <code class="inline">UIAccessibility.isReduceMotionEnabled</code>, swap to static SF Symbols (<code class="inline">waveform</code>, <code class="inline">clock</code>, <code class="inline">speaker.wave.2.fill</code>, <code class="inline">mic.slash</code>). The orb is the most motion-heavy surface in the app.</li>
+      <li><strong>Tint via <code class="inline">colorValueProvider</code></strong> — Lottie supports runtime layer color replacement; we'll apply the active thread's tint to a named layer (<code class="inline">orb-fill</code>). Saves 12 file copies.</li>
+    </ul>
+
+    <h3>Motion tokens</h3>
+    <p>Added to the existing <code class="inline">BoopMotion</code> namespace:</p>
+    <table>
+      <thead><tr><th>Token</th><th>Duration</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">voiceState.transition</code></td><td>280 ms ease-out</td><td>orb cross-fade between states</td></tr>
+        <tr><td><code class="inline">voiceState.tapSkip</code></td><td>120 ms snap-fade</td><td>tap-orb-to-skip audio drain</td></tr>
+        <tr><td><code class="inline">voiceState.routeChange</code></td><td>300 ms ease-in-out</td><td>AirPods-pull audio fade</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="doc-section" id="test-plan">
+    <h2><span class="num">10</span> Test plan <a href="#test-plan" class="anchor">#</a></h2>
+    <p class="lede">Unit tests on both sides, one slow integration test, and a manual TestFlight smoke checklist.</p>
+
+    <h3>Server-side unit tests</h3>
+    <table>
+      <thead><tr><th>File</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">tests/voice/sentence-buffer.test.ts</code></td><td>Sentence splitting on <code class="inline">.!?:\n\n</code>. Abbreviation false-positive avoidance (<code class="inline">Mr.</code>, <code class="inline">U.S.</code>, <code class="inline">3.14</code>). Forces flush after <code class="inline">maxBufferMs</code>. Flushes remainder on <code class="inline">assistant_message</code>.</td></tr>
+        <tr><td><code class="inline">tests/voice/tts-sidecar.test.ts</code></td><td>Routes sentences to ElevenLabs when key present; emits <span class="evt new">tts_use_local</span> when missing. Handles WS error → fallback with remaining text. Per-turn cleanup on <code class="inline">assistant_message</code>.</td></tr>
+        <tr><td><code class="inline">tests/voice/markdown-strip.test.ts</code></td><td>Bold, backticks, headers, bullets, fenced code all removed. URLs preserved.</td></tr>
+        <tr><td><code class="inline">tests/voice/ios-router-voice.test.ts</code></td><td><code class="inline">POST /inbound</code> with <code class="inline">source: "voice"</code> propagates fields. SSE forwards <code class="inline">tts_*</code> events for matching conversationId only.</td></tr>
+        <tr><td><code class="inline">tests/voice/interaction-prompt.test.ts</code></td><td>When <code class="inline">source === "ios-voice"</code>, system prompt contains the addendum. Otherwise it doesn't.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>iOS unit + UI tests</h3>
+    <table>
+      <thead><tr><th>File</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">ios/BoopTests/VoiceSessionTests.swift</code></td><td>VAD commits after silence; rejects sub-threshold bursts; force-commits at max. Empty transcript → no POST.</td></tr>
+        <tr><td><code class="inline">ios/BoopTests/AudioQueueTests.swift</code></td><td>Chunks play in <code class="inline">seq</code> order; out-of-order chunks reorder via jitter buffer. <code class="inline">drain()</code> resolves after last buffer plays.</td></tr>
+        <tr><td><code class="inline">ios/BoopTests/SSEClientVoiceTests.swift</code></td><td>New event types decode correctly. Stale <code class="inline">voiceTurnId</code> events dropped.</td></tr>
+        <tr><td><code class="inline">ios/BoopUITests/VoiceModeUITests.swift</code></td><td>Tap dock mic → permission card → orb. ✕ closes. State transitions render correct Lottie via accessibility identifier. Reduce Motion swaps to SF Symbol fallback.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Integration test (slow, optional in CI)</h3>
+    <p><code class="inline">tests/voice/e2e-voice.test.ts</code> — boops the local server, sends <code class="inline">POST /inbound { source: "voice", text: "hello" }</code>, opens SSE, asserts the event sequence: <span class="evt">assistant_delta+</span> → <span class="evt new">tts_chunk+</span> → <span class="evt new">tts_done</span> → final <span class="evt">assistant_message</span> in Convex. Uses a mock ElevenLabs WS returning fixed PCM — no real API calls.</p>
+
+    <h3>Manual TestFlight smoke checklist</h3>
+    <details>
+      <summary>Pre-merge dogfood checklist (added to <code class="inline">ios/README.md</code>)</summary>
+      <ul>
+        <li>First-tap dock mic shows permission card; Allow → orb screen.</li>
+        <li>Permissions denied → Settings deep-link card with correct subtitle.</li>
+        <li>Speak "hello" → VAD commits within 1.5s after silence → orb goes <span class="state thinking">thinking</span>.</li>
+        <li>First TTS audio audible ≤ 1.5s after VAD commit (ElevenLabs path).</li>
+        <li>Continuous loop: mic re-arms automatically after assistant finishes.</li>
+        <li>Mute toggles correctly.</li>
+        <li>Tap orb during <span class="state speaking">speaking</span> → audio cuts, mic re-arms after ~150ms.</li>
+        <li>Tap ⌨ during <span class="state listening">listening</span> → exit, latest partial transcript in dock composer.</li>
+        <li>Pull AirPods mid-<span class="state speaking">speaking</span> → fade over ~300ms, paused.</li>
+        <li>Phone call mid-session → auto-pause; after call → auto-resume.</li>
+        <li>Backgrounded → current sentence finishes; foregrounded → resumes <span class="state listening">listening</span>.</li>
+        <li><code class="inline">ELEVENLABS_API_KEY</code> unset → AVSpeech fallback. Quality drop, no broken state.</li>
+        <li>Voice turns appear in the chat thread after sheet closed, indistinguishable from text turns.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="doc-section" id="dod">
+    <h2><span class="num">11</span> Definition of done <a href="#dod" class="anchor">#</a></h2>
+    <p class="lede">Concrete, measurable criteria for shipping M2.</p>
+    <ul>
+      <li>Tap dock mic on the active thread → voice mode opens → ten consecutive turns work without exiting.</li>
+      <li>First-audio latency from VAD commit ≤ 1.5s p50 / ≤ 2.5s p90 on the ElevenLabs path. Measured via a <code class="inline">voice_latency</code> log line emitted server-side per turn.</li>
+      <li>All unit + UI tests green. Integration test green with mock ElevenLabs.</li>
+      <li><code class="inline">xcodebuild</code> clean. <code class="inline">npx tsc --noEmit</code> no new errors beyond the 8 pre-existing ones.</li>
+      <li>iMessage path untouched — manual smoke send via Sendblue still works.</li>
+      <li>Text mode in the dock untouched — typing a message still POSTs without <code class="inline">source</code> and gets a verbose markdown reply (regression check).</li>
+      <li>ElevenLabs key absent → graceful AVSpeech fallback. Verified by unsetting the env var and re-running the integration test.</li>
+      <li>TestFlight build uploaded (<code class="inline">CURRENT_PROJECT_VERSION</code> bumped).</li>
+      <li><code class="inline">Boop IOS Design.md</code> updated with an M2 status block.</li>
+      <li>This design doc and the implementation plan both live at <code class="inline">docs/superpowers/{specs,plans}/2026-05-23-ios-voice-m2-*.html</code>.</li>
+    </ul>
+
+    <h3>Worktree parallelization</h3>
+    <ul>
+      <li><strong>Lane A — server</strong>: <code class="inline">server/voice/*</code>, <code class="inline">server/interaction-agent.ts</code> addendum, <code class="inline">server/ios/router.ts</code> extension.</li>
+      <li><strong>Lane B — iOS</strong>: <code class="inline">VoiceSession</code>, <code class="inline">AudioQueue</code>, <code class="inline">LottieView</code>, <code class="inline">VoiceModeSheet</code>, permission card, SSE extension. Lane B uses a stub server emitting canned <span class="evt new">tts_chunk</span> payloads until Lane A is ready.</li>
+      <li><strong>Merge gate</strong>: integration test green on both branches before merge.</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="scope">
+    <h2><span class="num">12</span> Scope &amp; non-goals <a href="#scope" class="anchor">#</a></h2>
+    <p class="lede">Explicit list of things deferred or out of scope.</p>
+    <ul>
+      <li><strong>Barge-in</strong> (mid-TTS interruption) — M2.5 candidate. Requires echo cancellation; deliberately deferred.</li>
+      <li><strong>Voice-mode entry from Action Button / lock screen / Siri</strong> — M4 (App Intents).</li>
+      <li><strong>Per-thread voice selection</strong> — M2.1. Default ENV var voice for now.</li>
+      <li><strong>CarPlay integration</strong> — explicit non-goal.</li>
+      <li><strong>Streaming TTS for outbound iMessage</strong> — voice mode is iOS-only; no SMS readback.</li>
+      <li><strong>Background "always-listening" mode</strong> — explicit non-goal (battery, entitlements).</li>
+      <li><strong>Voice for the share extension</strong> (M3) — share extension stays text-first.</li>
+    </ul>
+  </section>
+
+  <section class="doc-section" id="open">
+    <h2><span class="num">13</span> Open questions <a href="#open" class="anchor">#</a></h2>
+    <p class="lede">Everything from the M1 design's open-questions list either remained open, was resolved, or shifted to M2's scope. None blocking implementation.</p>
+    <ul>
+      <li><strong>ElevenLabs cost during dogfood.</strong> Flash v2.5 is ~$0.10 per 1k characters on the Starter plan. A heavy week of dogfood (~100 minutes of TTS ≈ 100k chars) is ~$10. Acceptable for personal use. Document in <code class="inline">ios/README.md</code>.</li>
+      <li><strong>VAD threshold tuning.</strong> 1.4s silence default is a starting guess. Expose a hidden Dev Settings panel with sliders so the maintainer can A/B during the dogfood week.</li>
+      <li><strong>"Aria" voice — too generic?</strong> Possible follow-up: ship with a few curated voice presets in <code class="inline">.env.example</code> comments (Sarah, Brian, Bill, etc.).</li>
+    </ul>
+  </section>
+
+</main>
+
+</div>
+
+<footer class="foot">
+  Boop iOS · M2 Voice · spec drafted 2026-05-23 · branch <code class="inline" style="font-size:11px">feat/ios-channel</code> · prior milestone M1 shipped as PR #61.
+</footer>
+
+<script>
+  // Theme toggle (light / dark / system)
+  const themeBtn = document.getElementById("themeToggle");
+  const html = document.documentElement;
+  function applyTheme(t) {
+    if (t === "system") {
+      html.removeAttribute("data-theme");
+    } else {
+      html.setAttribute("data-theme", t);
+    }
+    themeBtn.textContent = t === "dark" ? "☀ Light" : t === "light" ? "● System" : "☾ Dark";
+  }
+  const stored = localStorage.getItem("m2-theme") || "system";
+  applyTheme(stored);
+  themeBtn.addEventListener("click", () => {
+    const cur = localStorage.getItem("m2-theme") || "system";
+    const next = cur === "system" ? "dark" : cur === "dark" ? "light" : "system";
+    localStorage.setItem("m2-theme", next);
+    applyTheme(next);
+  });
+
+  // Expand-all / collapse-all for details
+  const expandBtn = document.getElementById("toggleAll");
+  let allOpen = false;
+  expandBtn.addEventListener("click", () => {
+    allOpen = !allOpen;
+    document.querySelectorAll("details").forEach(d => { d.open = allOpen; });
+    expandBtn.textContent = allOpen ? "Collapse all" : "Expand all";
+  });
+
+  // TOC active state on scroll
+  const sections = document.querySelectorAll("section.doc-section");
+  const tocLinks = document.querySelectorAll("aside.toc a");
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        tocLinks.forEach(a => {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + id);
+        });
+      }
+    });
+  }, { rootMargin: "-40% 0px -55% 0px" });
+  sections.forEach(s => obs.observe(s));
+
+  // Lightweight syntax highlight for <pre><code> blocks that don't already contain spans.
+  // (Most code blocks in this doc are pre-tokenized with <span class="tok-*">.)
+  // No-op intentionally: we ship pre-tokenized code for readability of the source.
+</script>
+
+</body>
+</html>
