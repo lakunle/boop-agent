@@ -233,6 +233,8 @@ interface HandleOpts {
    * will use it instead of generating its own.
    */
   precomputedTurnId?: string;
+  source?: "voice";       // NEW — triggers voice-mode system prompt addendum + tts_* SSE pipeline
+  voiceTurnId?: string;   // NEW — client-generated UUID per voice utterance for tts_chunk tagging
 }
 
 function randomId(prefix: string): string {

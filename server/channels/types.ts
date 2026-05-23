@@ -43,6 +43,18 @@ export interface ParsedInbound {
    * grouping key. Required whenever `precomputedUserMessageId` is set.
    */
   precomputedTurnId?: string;
+  /**
+   * "voice" when the inbound came from iOS voice mode. Triggers the
+   * voice-mode addendum on the agent system prompt + the tts_* SSE
+   * pipeline on the outbound. Undefined for text channels.
+   */
+  source?: "voice";
+  /**
+   * Client-generated UUID per voice utterance. Tags outbound
+   * tts_chunk events so the iOS client can drop stale audio when
+   * the user fires another turn quickly.
+   */
+  voiceTurnId?: string;
 }
 
 export interface Channel {
