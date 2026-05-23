@@ -405,7 +405,7 @@ export function createIosRouter(): Router {
 
     const source = body.source === "voice" ? ("voice" as const) : undefined;
     const voiceTurnId =
-      typeof body.voiceTurnId === "string" && body.voiceTurnId.length > 0
+      typeof body.voiceTurnId === "string" && body.voiceTurnId.trim().length > 0
         ? body.voiceTurnId
         : undefined;
 
