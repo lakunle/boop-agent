@@ -49,6 +49,7 @@ struct Dock: View {
                     voiceStore.handoffToKeyboard(draft: &draft)
                 }
             )
+            .presentationDetents([.large])
         }
     }
 
@@ -239,6 +240,7 @@ struct Dock: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Voice mode")
+        .accessibilityIdentifier("dock.voice")
     }
 
     private var sendButton: some View {

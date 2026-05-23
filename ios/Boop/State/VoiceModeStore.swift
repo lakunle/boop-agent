@@ -12,6 +12,7 @@ enum VoiceState: Equatable {
 }
 
 @Observable
+@MainActor
 final class VoiceModeStore {
     var state: VoiceState = .permissionPending
     var transcript: String = ""
