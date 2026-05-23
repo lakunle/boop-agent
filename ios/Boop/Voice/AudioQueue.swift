@@ -30,6 +30,7 @@ actor AudioQueue {
     }
 
     func enqueue(seq: Int, audioBase64: String) async {
+        guard isStarted else { return }
         guard let data = Data(base64Encoded: audioBase64) else { return }
         pending[seq] = data
         await drainSequential()

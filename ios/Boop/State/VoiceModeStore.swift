@@ -37,6 +37,7 @@ final class VoiceModeStore {
     }
 
     func enter() async {
+        guard state == .permissionPending else { return }
         do {
             try await session.activate()
             try await audio.attachToEngine()
@@ -58,6 +59,7 @@ final class VoiceModeStore {
             let conn = client.streamSSE(threadId: threadId)
             sseTask = Task { [weak self] in await self?.consumeSSE(conn: conn) }
         } catch {
+            await session.deactivate()  // release session even on partial init failure
             state = .error(message: error.localizedDescription)
         }
     }

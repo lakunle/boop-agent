@@ -15,6 +15,7 @@ struct Dock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAttachPicker = false
     @State private var showVoiceMode = false
+    @State private var voiceStore: VoiceModeStore? = nil
     @Binding var draft: String
     var onSend: (String) -> Void
     @FocusState private var composerFocused: Bool
@@ -37,32 +38,37 @@ struct Dock: View {
         .attachPicker(isPresented: $showAttachPicker) { chip in
             chat.addChip(chip)
         }
-        .sheet(isPresented: $showVoiceMode) {
-            let thread = activeThread
-            let tint = thread.map { ThreadTint.forThreadId($0.id).solid } ?? ThreadTint.sky.solid
-            let name = thread?.label ?? "Thread"
-            let tid = thread?.id ?? ""
-            let cid = "ios:\(settings.deviceId):\(tid)"
-            let voiceClient = settings.serverBaseURL.map {
-                BoopClient(baseURL: $0, bearer: chat.currentBearer)
+        .onChange(of: showVoiceMode) { _, isShowing in
+            if isShowing, voiceStore == nil {
+                let thread = activeThread
+                let tid = thread?.id ?? ""
+                let cid = "ios:\(settings.deviceId):\(tid)"
+                let baseURL = settings.serverBaseURL ?? URL(string: "http://localhost:3456")!
+                let client = BoopClient(baseURL: baseURL, bearer: chat.currentBearer)
+                voiceStore = VoiceModeStore(
+                    client: client,
+                    conversationId: cid,
+                    threadId: tid
+                )
+            } else if !isShowing {
+                voiceStore = nil
             }
-            let voiceStore = VoiceModeStore(
-                client: voiceClient ?? BoopClient(
-                    baseURL: URL(string: "http://localhost:3456")!,
-                    bearer: chat.currentBearer
-                ),
-                conversationId: cid,
-                threadId: tid
-            )
-            VoiceModeSheet(
-                store: voiceStore,
-                threadTint: tint,
-                threadName: name,
-                onKeyboardHandoff: {
-                    voiceStore.handoffToKeyboard(draft: &draft)
-                }
-            )
-            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showVoiceMode) {
+            if let voiceStore {
+                let thread = activeThread
+                let tint = thread.map { ThreadTint.forThreadId($0.id).solid } ?? ThreadTint.sky.solid
+                let name = thread?.label ?? "Thread"
+                VoiceModeSheet(
+                    store: voiceStore,
+                    threadTint: tint,
+                    threadName: name,
+                    onKeyboardHandoff: {
+                        voiceStore.handoffToKeyboard(draft: &draft)
+                    }
+                )
+                .presentationDetents([.large])
+            }
         }
     }
 
