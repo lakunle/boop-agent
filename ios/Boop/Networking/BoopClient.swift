@@ -286,6 +286,10 @@ enum StreamEvent: Sendable {
     case agentSpawned(conversationId: String, agentId: String, name: String, task: String)
     case agentTool(conversationId: String, agentId: String, toolName: String)
     case agentDone(conversationId: String, agentId: String, status: String)
+    case ttsChunk(conversationId: String, voiceTurnId: String, seq: Int, audioBase64: String, mime: String)
+    case ttsDone(conversationId: String, voiceTurnId: String)
+    case ttsError(conversationId: String, voiceTurnId: String, reason: String)
+    case ttsUseLocal(conversationId: String, voiceTurnId: String, text: String)
 
     var conversationId: String {
         switch self {
@@ -299,6 +303,11 @@ enum StreamEvent: Sendable {
              .agentSpawned(let id, _, _, _),
              .agentTool(let id, _, _),
              .agentDone(let id, _, _):
+            return id
+        case .ttsChunk(let id, _, _, _, _),
+             .ttsDone(let id, _),
+             .ttsError(let id, _, _),
+             .ttsUseLocal(let id, _, _):
             return id
         }
     }
@@ -509,6 +518,27 @@ private final class SSEDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
             guard let agentId = dict["agentId"] as? String else { return nil }
             let status = (dict["status"] as? String) ?? "completed"
             return .agentDone(conversationId: conversationId, agentId: agentId, status: status)
+
+        case "tts_chunk":
+            guard let vid = dict["voiceTurnId"] as? String,
+                  let seq = dict["seq"] as? Int,
+                  let audio = dict["audio"] as? String,
+                  let mime = dict["mime"] as? String else { return nil }
+            return .ttsChunk(conversationId: conversationId, voiceTurnId: vid, seq: seq, audioBase64: audio, mime: mime)
+
+        case "tts_done":
+            guard let vid = dict["voiceTurnId"] as? String else { return nil }
+            return .ttsDone(conversationId: conversationId, voiceTurnId: vid)
+
+        case "tts_error":
+            guard let vid = dict["voiceTurnId"] as? String else { return nil }
+            let reason = (dict["reason"] as? String) ?? "unknown"
+            return .ttsError(conversationId: conversationId, voiceTurnId: vid, reason: reason)
+
+        case "tts_use_local":
+            guard let vid = dict["voiceTurnId"] as? String,
+                  let text = dict["text"] as? String else { return nil }
+            return .ttsUseLocal(conversationId: conversationId, voiceTurnId: vid, text: text)
 
         default:
             return nil

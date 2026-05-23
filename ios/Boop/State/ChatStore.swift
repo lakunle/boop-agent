@@ -271,6 +271,8 @@ final class ChatStore {
             attachToLatestAssistant(attachments)
         case .agentSpawned, .agentTool, .agentDone:
             onAgentEvent?(event)
+        case .ttsChunk, .ttsDone, .ttsError, .ttsUseLocal:
+            break
         }
 
         // After applying the event, schedule a cache write for the
