@@ -3,6 +3,7 @@ import SwiftUI
 struct VoiceModeSheet: View {
     @Bindable var store: VoiceModeStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let threadTint: Color
     let threadName: String
     let onKeyboardHandoff: () -> Void
@@ -76,6 +77,15 @@ struct VoiceModeSheet: View {
 
     @ViewBuilder
     private var orb: some View {
+        if reduceMotion {
+            staticOrb
+        } else {
+            animatedOrb
+        }
+    }
+
+    @ViewBuilder
+    private var animatedOrb: some View {
         switch store.state {
         case .listening:
             LottieOrbView(name: "listening", tint: threadTint)
@@ -114,6 +124,25 @@ struct VoiceModeSheet: View {
         }
     }
 
+    private var staticOrb: some View {
+        Image(systemName: staticSymbol)
+            .font(.system(size: 88, weight: .light))
+            .foregroundStyle(threadTint)
+            .frame(width: 160, height: 160)
+            .accessibilityIdentifier("voice.orb")
+    }
+
+    private var staticSymbol: String {
+        switch store.state {
+        case .listening: return "waveform"
+        case .thinking: return "clock"
+        case .speaking: return "speaker.wave.2.fill"
+        case .paused: return "mic.slash"
+        case .error: return "exclamationmark.triangle.fill"
+        case .permissionPending, .permissionDenied: return "waveform"
+        }
+    }
+
     private var subtitle: some View {
         VStack(spacing: 4) {
             Text(stateLabel)
@@ -130,18 +159,26 @@ struct VoiceModeSheet: View {
 
     private var controls: some View {
         HStack(spacing: 32) {
-            circleButton(systemName: store.isMuted ? "mic.slash.fill" : "speaker.slash.fill") {
+            circleButton(systemName: store.isMuted ? "mic.slash.fill" : "mic.fill") {
                 store.toggleMute()
-            }.accessibilityIdentifier("voice.mute")
+            }
+            .accessibilityIdentifier("voice.mute")
+            .accessibilityLabel(store.isMuted ? "Unmute" : "Mute")
 
             circleButton(systemName: "xmark", ring: .red) {
+                Task { await store.exit() }
                 dismiss()
-            }.accessibilityIdentifier("voice.exit.large")
+            }
+            .accessibilityIdentifier("voice.exit.large")
+            .accessibilityLabel("Exit voice mode")
 
             circleButton(systemName: "keyboard") {
                 onKeyboardHandoff()
+                Task { await store.exit() }
                 dismiss()
-            }.accessibilityIdentifier("voice.keyboard")
+            }
+            .accessibilityIdentifier("voice.keyboard")
+            .accessibilityLabel("Switch to keyboard")
         }
     }
 

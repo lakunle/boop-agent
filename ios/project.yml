@@ -67,6 +67,19 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.boop.BoopTests
         GENERATE_INFOPLIST_FILE: YES
+  BoopUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: BoopUITests
+    dependencies:
+      - target: Boop
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.boop.BoopUITests
+        TEST_TARGET_NAME: Boop
 
 schemes:
   Boop:
@@ -74,11 +87,13 @@ schemes:
       targets:
         Boop: all
         BoopTests: [test]
+        BoopUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - BoopTests
+        - BoopUITests
     archive:
       config: Release
