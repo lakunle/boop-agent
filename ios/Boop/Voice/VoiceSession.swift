@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import Speech
 
 /// Owns the AVAudioSession + AVAudioEngine for the lifetime of one
 /// voice-mode sheet. SFSpeech + VAD layered on in Task 15.
@@ -63,5 +64,65 @@ actor VoiceSession {
                           block: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void) throws {
         engine.inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: nil, block: block)
         try engine.start()
+    }
+}
+
+extension VoiceSession {
+    /// Starts capturing audio + transcribing via on-device SFSpeechRecognizer.
+    /// Partial transcripts fire continuously; the VAD decides when to commit.
+    /// `onCommit` is called with the final transcript when VAD commits.
+    /// Throws if the SFSpeechRecognizer isn't available for the locale.
+    func startListening(
+        partial: @escaping @Sendable (String) -> Void,
+        onCommit: @escaping @Sendable (String) -> Void,
+        vad: VoiceVAD = VoiceVAD()
+    ) throws {
+        let recognizer = SFSpeechRecognizer(locale: Locale.current)
+        recognizer?.supportsOnDeviceRecognition = true
+        guard let recognizer, recognizer.isAvailable else {
+            throw NSError(domain: "voice", code: 1, userInfo: [NSLocalizedDescriptionKey: "Speech recognizer unavailable"])
+        }
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.requiresOnDeviceRecognition = true
+        request.shouldReportPartialResults = true
+
+        let transcriptBox = TranscriptBox()
+        let task = recognizer.recognitionTask(with: request) { result, _ in
+            if let r = result {
+                transcriptBox.set(r.bestTranscription.formattedString)
+                partial(transcriptBox.value)
+            }
+        }
+
+        try installInputTap { buffer, _ in
+            request.append(buffer)
+            let db = rmsDB(buffer: buffer)
+            let event = vad.observe(rmsDB: db, at: CACurrentMediaTime())
+            switch event {
+            case .committedUtterance, .forceCommitted:
+                let final = transcriptBox.value
+                request.endAudio()
+                task.finish()
+                if !final.isEmpty { onCommit(final) }
+            default:
+                break
+            }
+        }
+    }
+}
+
+/// Thread-safe holder for the latest partial transcript. SFSpeech callbacks
+/// fire on a background queue and the tap fires on the audio render thread,
+/// so we serialise via NSLock.
+final class TranscriptBox: @unchecked Sendable {
+    private var _value: String = ""
+    private let lock = NSLock()
+    var value: String {
+        lock.lock(); defer { lock.unlock() }
+        return _value
+    }
+    func set(_ v: String) {
+        lock.lock(); defer { lock.unlock() }
+        _value = v
     }
 }

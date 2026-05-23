@@ -55,12 +55,30 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_EMIT_LOC_STRINGS: YES
         CODE_SIGN_STYLE: Automatic
+  BoopTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: BoopTests
+    dependencies:
+      - target: Boop
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.boop.BoopTests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   Boop:
     build:
       targets:
         Boop: all
+        BoopTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - BoopTests
     archive:
       config: Release
