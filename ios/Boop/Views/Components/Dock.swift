@@ -13,6 +13,8 @@ struct Dock: View {
     @Environment(ChatStore.self) private var chat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAttachPicker = false
+    @State private var showVoiceMode = false
+    @State private var voiceStore = VoiceModeStore()
     @Binding var draft: String
     var onSend: (String) -> Void
     @FocusState private var composerFocused: Bool
@@ -34,6 +36,19 @@ struct Dock: View {
         .padding(.bottom, 18)
         .attachPicker(isPresented: $showAttachPicker) { chip in
             chat.addChip(chip)
+        }
+        .sheet(isPresented: $showVoiceMode) {
+            let thread = activeThread
+            let tint = thread.map { ThreadTint.forThreadId($0.id).solid } ?? ThreadTint.sky.solid
+            let name = thread?.label ?? "Thread"
+            VoiceModeSheet(
+                store: voiceStore,
+                threadTint: tint,
+                threadName: name,
+                onKeyboardHandoff: {
+                    voiceStore.handoffToKeyboard(draft: &draft)
+                }
+            )
         }
     }
 
@@ -209,19 +224,21 @@ struct Dock: View {
     }
 
     private var voiceModeButton: some View {
-        // Placeholder. No-op this pass. See spec §1.1 #3. Uses SF
-        // Symbols `mic.fill` because LucideName has no mic case;
-        // dropping a Lucide mic asset is out of scope for this pass.
-        ZStack {
-            Circle().fill(BoopColor.surfaceElev)
-            Circle().strokeBorder(BoopColor.border, lineWidth: 1)
-            Image(systemName: "mic.fill")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(ThreadTint.sky.text)
+        // Tapping presents VoiceModeSheet. Uses SF Symbols `mic.fill`
+        // because LucideName has no mic case; dropping a Lucide mic
+        // asset is out of scope for this pass.
+        Button(action: { showVoiceMode = true }) {
+            ZStack {
+                Circle().fill(BoopColor.surfaceElev)
+                Circle().strokeBorder(BoopColor.border, lineWidth: 1)
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(ThreadTint.sky.text)
+            }
+            .frame(width: 36, height: 36)
         }
-        .frame(width: 36, height: 36)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Voice mode")
     }
 
     private var sendButton: some View {
