@@ -48,3 +48,23 @@ test("emits onChunk for each text send", () => withMockServer(async (port) => {
   assert.equal(chunks[0].includes("fake-mp3-bytes"), false);
   assert.equal(doneCalled, true);
 }));
+
+test("send() after end() is silently ignored", () => withMockServer(async (port) => {
+  let chunks = 0;
+  const stream = createElevenLabsStream({
+    wsUrlOverride: `ws://localhost:${port}`,
+    voiceId: "test",
+    modelId: "eleven_flash_v2_5",
+    apiKey: "test",
+    onChunk: () => { chunks++; },
+    onDone: () => {},
+    onError: () => assert.fail("unexpected error"),
+  });
+  await stream.opened;
+  stream.send("hello");
+  const endPromise = stream.end();
+  // Try to slip a frame in between end() and the close — should be silently dropped
+  stream.send("ghost frame");
+  await endPromise;
+  assert.equal(chunks, 1, "only the pre-end send should produce a chunk");
+}));

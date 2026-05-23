@@ -75,15 +75,15 @@ export function createElevenLabsStream(opts: ElevenLabsStreamOpts): ElevenLabsSt
   return {
     opened: openedPromise,
     send(text) {
-      if (ws.readyState !== WebSocket.OPEN) return;
+      if (ended || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ text: text + " ", try_trigger_generation: true }));
     },
     async end() {
       ended = true;
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ text: "" }));
       await new Promise<void>((resolve) => {
-        ws.once("close", () => resolve());
-        setTimeout(resolve, 2000); // hard cap so the test doesn't hang
+        const t = setTimeout(resolve, 2000); // hard cap so the test doesn't hang
+        ws.once("close", () => { clearTimeout(t); resolve(); });
       });
     },
     abort() {
